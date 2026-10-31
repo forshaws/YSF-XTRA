@@ -239,6 +239,7 @@ def latlon_to_grid(lat, lon):
 CSS = """
 :root{--red:#ff2440;--blue:#2f7bff;--white:#f4f4f4;--dim:#59616e;--dark:#2a2f38;--ink:#000}
 *{box-sizing:border-box}
+html,body,*{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:#070707}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{display:flex;
@@ -905,6 +906,8 @@ JS = r"""
   $('kup').addEventListener('click', function () { move(-1); });
   $('kdn').addEventListener('click', function () { move(1); });
   $('ksel').addEventListener('click', function () { if (view === 'pin') { submitPin(); } else { activate(); } });
+  document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  document.addEventListener('selectstart', function (e) { e.preventDefault(); });
   document.addEventListener('keydown', function (e) {
     if (e.ctrlKey || e.metaKey || e.altKey) { return; }
     if (msgOpen) {
@@ -946,7 +949,9 @@ JS = r"""
 
   /* ---- RADAR view: tiles + compass of stations with a known position ---- */
   var gmOpen = false, gmIdx = 0;
+  gmIdx = parseInt(store.get('range', '0'), 10) || 0;
   var GM_RANGES = [0, 10, 25, 50, 100, 250, 500, 1000, 5000, 20000];
+  if (!(gmIdx >= 0 && gmIdx < GM_RANGES.length)) { gmIdx = 0; }
   var SVGNS = 'http://www.w3.org/2000/svg';
   function geoTo(call) {
     var o = origin(), p = last && last.pos && last.pos[call];
@@ -1062,7 +1067,7 @@ JS = r"""
   }
   $('gmbtn').addEventListener('click', function () { openGm(); });
   $('gback').addEventListener('click', backGm);
-  $('grange').addEventListener('click', function () { gmIdx = (gmIdx + 1) % GM_RANGES.length; drawGm(); });
+  $('grange').addEventListener('click', function () { gmIdx = (gmIdx + 1) % GM_RANGES.length; store.set('range', String(gmIdx)); drawGm(); });
 
   var nodeShown = null;
   function render(d) {
