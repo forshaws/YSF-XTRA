@@ -341,6 +341,8 @@ border-left:calc(var(--u)*.5) solid transparent;user-select:none;-webkit-user-se
 .mi.dis{color:var(--dim)}
 .mi.sel{background:var(--blue);color:#fff;border-left-color:var(--red)}
 .mi.sel .mv{color:#fff}
+.about{padding:calc(var(--u)*2) calc(var(--u)*1.6);font-size:calc(var(--u)*2.8);line-height:1.7;text-align:center}
+.about a{color:var(--blue);text-decoration:underline;word-break:break-all}
 .mq{text-align:center;font-size:calc(var(--u)*3.4);margin:calc(var(--u)*1) 0 calc(var(--u)*1.4)}
 .dots{text-align:center;font-size:calc(var(--u)*5.5);font-weight:700;letter-spacing:.3em;
 height:calc(var(--u)*7);color:var(--white)}
@@ -745,6 +747,7 @@ JS = r"""
     l.push({k: 'log', label: 'LOG', val: (d.msg || d.news) ? (unreadCount() ? unreadCount() + ' NEW' : 'OPEN') : 'N/A', dis: !(d.msg || d.news)});
     l.push({k: 'aprs', label: 'APRS POSITIONS', val: d.aprs ? (d.aprs.connected ? 'LIVE ' : 'OFFLINE ') + d.aprs.known : 'N/A', dis: true});
     l.push({k: 'admin', label: 'ADMIN', val: admin ? 'LOGOUT' : (d.auth ? 'LOGIN' : 'NO PIN SET'), dis: !admin && !d.auth});
+    l.push({k: 'about', label: 'ABOUT', val: ''});
     l.push({k: 'exit', label: 'EXIT', val: ''});
     return l;
   }
@@ -781,6 +784,19 @@ JS = r"""
       body.appendChild(pad);
       return;
     }
+    if (view === 'about') {
+      title.textContent = 'ABOUT';
+      $('mnode').textContent = (last && last.node) || '';
+      var ab = document.createElement('div'); ab.className = 'about';
+      var l1 = document.createElement('div'); l1.textContent = 'YSF-XTRA';
+      var l2 = document.createElement('div'); l2.textContent = 'Written by Scot Forshaw (M0RWV)';
+      var l3 = document.createElement('a');
+      l3.href = 'https://github.com/forshaws/YSF-XTRA'; l3.target = '_blank'; l3.rel = 'noopener noreferrer';
+      l3.textContent = 'github.com/forshaws/YSF-XTRA';
+      ab.appendChild(l1); ab.appendChild(l2); ab.appendChild(l3);
+      body.appendChild(ab);
+      return;
+    }
     var items = curItems();
     if (sel >= items.length) { sel = items.length - 1; }
     title.textContent = view === 'confirm' ? 'CONFIRM' : (view === 'log' ? 'LOG' : 'MENU');
@@ -806,7 +822,7 @@ JS = r"""
     if (view !== 'list') { view = 'list'; pin = ''; msg = ''; drawMenu(); } else { closeMenu(); }
   }
   function move(dir) {
-    if (view === 'pin') { return; }
+    if (view === 'pin' || view === 'about') { return; }
     var n = curItems().length;
     sel = (sel + dir + n) % n; drawMenu();
   }
@@ -844,8 +860,9 @@ JS = r"""
     drawMenu();
   }
   function activate() {
-    var it = curItems()[sel]; if (!it) { return; }
+    var it = curItems()[sel]; if (!it && view !== 'about') { return; }
     msg = '';
+    if (view === 'about') { view = 'list'; drawMenu(); return; }
     if (view === 'confirm') {
       if (it.k === 'yes') { sendBridge(); return; }
       view = 'list'; drawMenu(); return;
@@ -868,7 +885,7 @@ JS = r"""
       if (opt.loc === 'GPS') { gpsErr = null; if (gps) { gpsAt = 0; } requestGps(); }
       if (last) { render(last); }
     } else if (it.k === 'gm') {
-      if (d.aprs) { closeMenu(); openGm(); return; }
+      if (d.aprs) { var s3 = sel; closeMenu(); sel = s3; openGm(true); return; }
       msg = 'NEEDS APRS ON THE SERVER';
     } else if (it.k === 'log') {
       if (!d.msg && !d.news) { msg = 'NEEDS --messages OR --news ON THE SERVER'; } else { view = 'log'; sel = 0; }
@@ -879,7 +896,8 @@ JS = r"""
       if (admin) { post('api/logout', {}, function () { admin = null; msg = 'LOGGED OUT'; drawMenu(); }); }
       else if (d.auth) { view = 'pin'; pin = ''; wantDmr = false; }
       else { msg = 'ADMIN PIN NOT SET ON SERVER'; }
-    } else if (it.k === 'exit') { closeMenu(); return; }
+    } else if (it.k === 'about') { view = 'about'; }
+    else if (it.k === 'exit') { closeMenu(); return; }
     drawMenu();
   }
   $('menubtn').addEventListener('click', openMenu);
@@ -899,7 +917,7 @@ JS = r"""
       e.preventDefault(); return;
     }
     if (gmOpen) {
-      if (e.key === 'Escape' || e.key === 'r' || e.key === 'R') { closeGm(); e.preventDefault(); }
+      if (e.key === 'Escape' || e.key === 'r' || e.key === 'R') { backGm(); e.preventDefault(); }
       return;
     }
     if (!menuOpen) {
@@ -1034,10 +1052,16 @@ JS = r"""
     svg.appendChild(svgEl('polygon', {points: '0,-8 6,7 0,3 -6,7', 'class': 'rme', transform: 'translate(100,100)'}));
     if (out) { $('gmmsg').textContent = '+' + out + ' BEYOND RANGE'; }
   }
-  function openGm() { closeMenu(); gmOpen = true; $('gm').className = 'menu'; drawGm(); $('grange').focus(); }
+  var gmFromMenu = 0;
+  function openGm(fromMenu) { gmFromMenu = fromMenu === true ? sel + 1 : 0; closeMenu(); gmOpen = true; $('gm').className = 'menu'; drawGm(); $('grange').focus(); }
   function closeGm() { if (!gmOpen) { return; } gmOpen = false; $('gm').className = 'menu hidden'; $('gmbtn').focus(); }
-  $('gmbtn').addEventListener('click', openGm);
-  $('gback').addEventListener('click', closeGm);
+  function backGm() {
+    var s0 = gmFromMenu - 1; if (!gmOpen) { return; }
+    closeGm();
+    if (s0 >= 0) { gmFromMenu = 0; openMenu(); sel = s0; drawMenu(); }
+  }
+  $('gmbtn').addEventListener('click', function () { openGm(); });
+  $('gback').addEventListener('click', backGm);
   $('grange').addEventListener('click', function () { gmIdx = (gmIdx + 1) % GM_RANGES.length; drawGm(); });
 
   var nodeShown = null;
