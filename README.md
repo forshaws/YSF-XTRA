@@ -2,7 +2,7 @@
 
 Extras for a YSF (Yaesu System Fusion) reflector: a radio-style web dashboard, a documented decoder for the text messages and GPS positions that Yaesu C4FM radios send through it, and a News Station that answers WIRES-X news requests with text messages and keeps uploads from your users.
 
-Python 3.5+, standard library only. Written for a Raspberry Pi 3B+ running a G4KLX YSFReflector; works on any Linux host that can read the reflector log.
+Python 3.5+, standard library only. Written for a Raspberry Pi 3B+ running pYSFReflector; works on any Linux host that can read the reflector log.
 
 <table>
 <tr>
@@ -35,7 +35,7 @@ YSF-XTRA is a work in progress and an open exploration. It records what Yaesu Sy
 
 This gets the dashboard running first, then adds the optional parts one at a time. Check each step before moving on.
 
-**You need:** a Linux host (a Raspberry Pi is fine) running a YSF reflector (G4KLX YSFReflector or compatible) on the same machine, Python 3.5 or later, systemd, `git` and `sudo`.
+**You need:** a Linux host (a Raspberry Pi is fine) running a YSF reflector on the same machine (tested with pYSFReflector; the decoder only needs the reflector's UDP port, the dashboard needs its log files), Python 3.5 or later, systemd, `git` and `sudo`.
 
 ### Values you will set
 
@@ -275,7 +275,7 @@ Admin actions (DMR toggle, `POST /api/delete` for messages and news items) are P
 
 ## Tested on
 
-FT5D (sending and receiving, voice and text, News Station upload and download), FT3D (receiving a generated text message), a Raspberry Pi 3B+ with Raspbian 9 and Python 3.5. Other radio models, other firmware, voice modes other than voice/data mode 2, and image or data messages are untested.
+FT5D (sending and receiving, voice and text, News Station upload and download), FT3D (receiving a generated text message), a Raspberry Pi 3B+ with Raspbian 9 and Python 3.5, with pYSFReflector as the reflector. Other reflector software, such as the G4KLX YSFReflector, is untested. Other radio models, other firmware, voice modes other than voice/data mode 2, and image or data messages are untested.
 
 ## Responsible use
 

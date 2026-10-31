@@ -1,6 +1,6 @@
 # ysfdash
 
-Read-only web dashboard for a G4KLX YSFReflector. Single Python file, standard library only, Python 3.5+.
+Read-only web dashboard for a YSF reflector (tested with pYSFReflector). Single Python file, standard library only, Python 3.5+.
 
 ## Install (Raspbian 9)
 
