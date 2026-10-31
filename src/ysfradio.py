@@ -664,7 +664,8 @@ JS = r"""
     };
     x.send();
   }
-  function openMsg(kind) {
+  function openMsg(kind, fromLog) {
+    msgFromLog = fromLog ? sel + 1 : 0;
     closeGm(); if (menuOpen) { closeMenu(); }
     logKind = kind === 'news' ? 'news' : 'msg';
     msgOpen = true; msgs = []; msel = 0; msgLoaded = false; msgLatest = 0;
@@ -672,10 +673,12 @@ JS = r"""
     $('mgt').textContent = logKind === 'news' ? 'LOG NEWS' : 'LOG MSG';
     $('mg').className = 'menu'; buildMsg(); loadMsgs(true); $('mback').focus();
   }
+  var msgFromLog = 0;
   function closeMsg() {
     if (!msgOpen) { return; }
     msgOpen = false; $('mg').className = 'menu hidden'; disarmDel();
     if (logKind === 'msg') { markSeen(); }
+    if (msgFromLog) { var s0 = msgFromLog - 1; msgFromLog = 0; openMenu(); view = 'log'; sel = s0; drawMenu(); return; }
     $('menubtn').focus();
   }
   function disarmDel() {
@@ -848,8 +851,8 @@ JS = r"""
       view = 'list'; drawMenu(); return;
     }
     if (view === 'log') {
-      if (it.k === 'message' && !it.dis) { closeMenu(); openMsg('msg'); return; }
-      if (it.k === 'news' && !it.dis) { closeMenu(); openMsg('news'); return; }
+      if (it.k === 'message' && !it.dis) { var s1 = sel; closeMenu(); sel = s1; openMsg('msg', true); return; }
+      if (it.k === 'news' && !it.dis) { var s2 = sel; closeMenu(); sel = s2; openMsg('news', true); return; }
       if (it.dis) { drawMenu(); return; }
       view = 'list'; sel = 0; drawMenu(); return;
     }
