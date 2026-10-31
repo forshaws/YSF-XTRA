@@ -111,8 +111,8 @@ Transmit only under your own callsign and licence conditions. `ysfsend.py` and `
 
 ## Credits
 
-Reverse-engineering and verification: Scot Forshaw (M0RWV). Analysis and implementation: Claude (Anthropic), working from captures made on the author's own equipment.
+Scot Forshaw (M0RWV). Based on captures made on the author's own equipment.
 
 ## Licence
 
-Not yet chosen.
+See `LICENSE`.

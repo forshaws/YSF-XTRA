@@ -1,7 +1,7 @@
 # Yaesu System Fusion (C4FM) text messages: observed format, decoding and generation
 
 **Status:** working, verified on real hardware. The GPS block of GPS-attached messages (5.6) and the position in voice transmissions (5.7) are decoded; sending GPS-attached messages has not been tested.
-**Authors:** Scot Forshaw (M0RWV), with assistance from Claude (Anthropic).
+**Author:** Scot Forshaw (M0RWV).
 **Date:** 30 October 2026
 
 ## 1. Summary
@@ -340,8 +340,6 @@ Test vector: `whitening(40)` packed into bytes is `93 d7 51 21 9c`.
 - Yaesu Musen Co., Ltd., *C4FM/FDMA Digital Air Interface Specification*, version 1.02, July 2015 (frame structure, FICH, error coding, interleaving, whitening).
 - Reflector and gateway software used for observation: the YSF reflector family (network packet formats `YSFP`, `YSFU`, `YSFD`).
 
-## 12. Credits and licence
+## 12. Credits
 
-Reverse-engineering and verification: Scot Forshaw, M0RWV. Analysis, decoder and sender implementation: Claude (Anthropic), working from captures made by the author on the author's own equipment.
-
-Suggested licences before publishing: this document under CC BY 4.0, and the tools under MIT. Choose and add the licence files yourself.
+Scot Forshaw, M0RWV, working from captures made on the author's own equipment.
