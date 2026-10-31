@@ -1,0 +1,19 @@
+[Unit]
+Description=YSF Reflector radio-style dashboard (HTTPS)
+After=network.target
+
+[Service]
+User=ysfdash
+Group=adm
+ExecStart=/usr/bin/python3 /opt/ysfdash/ysfradio.py --log-dir /var/log/YSFReflector --host 0.0.0.0 --port 443 --redirect-port 80 --public-host reflector.example.org --cert /opt/ysfdash/certs/fullchain.pem --key /opt/ysfdash/certs/privkey.pem --base /dash --node N0CALL --name "My YSF Reflector" --grid IO91 --bridge-unit mmdvm_bridge_ysf.service --aprs --messages --positions --news
+Restart=on-failure
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/ysfradio
+
+[Install]
+WantedBy=multi-user.target

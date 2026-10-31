@@ -1,0 +1,19 @@
+#!/bin/sh
+# Root helper for ysfradio. Run by ysf-bridge-ctl.path when the dashboard drops
+# /var/lib/ysfradio/bridge.request. Only "start" and "stop" are honoured and the
+# unit name is fixed here, never taken from the request.
+REQ=/var/lib/ysfradio/bridge.request
+UNIT=mmdvm_bridge_ysf.service
+
+if [ ! -f "$REQ" ] || [ -L "$REQ" ]; then
+    rm -f -- "$REQ"
+    exit 0
+fi
+action=$(head -c 16 "$REQ" | tr -d ' \r\n')
+rm -f -- "$REQ"
+case "$action" in
+    start) /bin/systemctl start "$UNIT" ;;
+    stop)  /bin/systemctl stop "$UNIT" ;;
+    *)     echo "ysf-bridge-ctl: ignoring request" >&2 ;;
+esac
+exit 0

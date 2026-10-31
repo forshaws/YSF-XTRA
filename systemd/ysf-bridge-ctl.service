@@ -1,0 +1,6 @@
+[Unit]
+Description=Start/stop the DMR X-link on request from the YSF dashboard
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ysf-bridge-ctl

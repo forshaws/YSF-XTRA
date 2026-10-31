@@ -1,0 +1,7 @@
+# Quick set: one line per message, in the order sent.
+N 0 00.00  E 0 00.00
+N 0 00.01  E 0 00.00
+N 54 14.95  E 0 00.00
+N 0 00.00  W 0 23.42
+N 0 00.01  E 0 00.01
+S 54 14.95  E 0 00.00

@@ -1,0 +1,6 @@
+# News Station messages. One message per line, up to 80 characters; lines starting with # are ignored.
+# {call} is replaced by the callsign of the radio that asked. Edit any time, no restart needed.
+# Uploads from radios are added after these lines automatically.
+Hello {call}, welcome to our reflector. 73!
+# Net every Tuesday 8pm - all welcome
+# Reflector news and club notices go here

@@ -1,0 +1,20 @@
+[Unit]
+Description=YSF reflector News Station responder (text messages)
+After=network.target ysfmsg.service
+
+[Service]
+User=ysfdash
+Group=ysfdash
+ExecStart=/usr/bin/python3 /opt/ysfdash/ysfnews.py --template /var/lib/ysfradio/news-template.jsonl --call N0CALL --radio-id 00000
+Restart=on-failure
+CapabilityBoundingSet=
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET AF_UNIX
+ReadWritePaths=/var/lib/ysfradio
+
+[Install]
+WantedBy=multi-user.target
