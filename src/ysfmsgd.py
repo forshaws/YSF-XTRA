@@ -220,13 +220,17 @@ class Decoder(object):
             sys.stderr.flush()
 
     def news_request(self, src, rec, now):
-        """A WIRES-X News Station download (message) request: command ']l_', payload '3'
+        """A WIRES-X News Station download (message) request: command ']l_', payload '3' (FT5D) or '0' (FT3D)
         + room ID + station ID + '120' ..., ETX, checksum. Only the requester's callsign
         and radio ID are queued."""
-        if self.news is None or rec[61:64] != b"]l_" or rec[64:65] != b"3" or not rec[65:75].isdigit():
+        if self.news is None or rec[61:64] != b"]l_" or not rec[65:75].isdigit():
             return
         etx = rec.find(b"\x03", 64)
-        if etx < 0 or etx + 1 >= len(rec) or (sum(rec[22:etx]) & 0xFF) != rec[etx + 1]:
+        if etx < 0 or etx + 1 >= len(rec) or rec[etx + 1] not in (sum(rec[22:etx]) & 0xFF, sum(rec[13:etx]) & 0xFF):
+            return                                    # checksum starts at byte 22 (FT5D) or 13 (FT3D)
+        if rec[64:65] not in (b"3", b"0"):             # 3 = FT5D, 0 = FT3D: message downloads
+            sys.stderr.write("ysfmsgd: news request type %r not answered\n" % rec[64:65].decode("latin-1"))
+            sys.stderr.flush()
             return
         if rec[5:10] != rec[55:60]:
             return

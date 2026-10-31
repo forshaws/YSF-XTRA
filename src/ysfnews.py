@@ -143,12 +143,12 @@ def main():
     call = a.call.upper()
     if not ysfmsgstore.CALL_RE.match(call):
         raise SystemExit("--call is not a valid callsign")
-    if not ysfmsgstore.RID_RE.match(a.radio_id.upper()):
+    if not ysfmsgstore.RID_RE.match(a.radio_id):
         raise SystemExit("--radio-id must be 5 letters or digits")
     tpl = S.load_template(a.template)
     if not tpl:
         raise SystemExit("no 7-frame transmission found in %s" % a.template)
-    sender = Sender(tpl, call, a.radio_id.upper(), a.host, a.port, a.seq_file, a.gap)
+    sender = Sender(tpl, call, a.radio_id, a.host, a.port, a.seq_file, a.gap)
 
     if not os.path.exists(a.seq_file):
         with open(a.seq_file, "w") as f:
@@ -158,7 +158,7 @@ def main():
     seen = {}                                            # radio ID -> time answered
     hour = collections.deque()
     sig = None
-    log("watching %s, news file %s, sending as %s %s" % (a.queue, a.news, call, a.radio_id.upper()))
+    log("watching %s, news file %s, sending as %s %s" % (a.queue, a.news, call, a.radio_id))
     while True:
         try:
             st = os.stat(a.queue)

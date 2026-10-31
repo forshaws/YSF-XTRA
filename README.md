@@ -45,6 +45,7 @@ This gets the dashboard running first, then adds the optional parts one at a tim
 | Reflector name on the banner | `ysfradio.service`: `--name` | `"My YSF Reflector"` |
 | Your locator, for distance and RADAR | `ysfradio.service`: `--grid` (or `--lat` and `--lon`) | `IO91` |
 | Reflector log folder | `ysfradio.service`: `--log-dir` | `/var/log/YSFReflector` |
+| Time-out the talk meter counts to, in seconds | `ysfradio.service`: `--tot` (default 60) | `180` |
 | Reflector UDP port | `ysfmsg.service`: `--port` | `42002` |
 | News Station room ID | `ysfmsg.service`: `--board-room-id` | `12345` |
 | Callsign the News replies are sent as | `ysfnews.service`: `--call` | `N0CALL` |

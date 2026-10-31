@@ -243,7 +243,9 @@ Commands seen (FT5D, a YSF reflector reached through a gateway; no reply was rec
 | download, message | `5d 6c 5f` (`]l_`) | 3 (2) | `3` `14561` `17989` `120` and spaces, then `0` at offset 83 |
 | upload, message entered and sent | `47 65 5f` (`Ge_`) | 5 (4) | normal text record, destination ID `14561`, destination callsign `GB-CCARC` |
 
-The destination of the message sent from the WIRES-X screen was the room's ID `14561` and its name `GB-CCARC` instead of blank and `**********`. The same `14561` appears in the download command. `17989` appears in both the NEWS STATION and download commands and is not yet explained, nor are `3A1`, `120` or the meaning of the command bytes. The values come from only a few presses and a single room. The checksum rule held for all of them.
+The destination of the message sent from the WIRES-X screen was the room's ID `14561` and its name `GB-CCARC` instead of blank and `**********`. The same `14561` appears in the download command. `17989` appears in both the NEWS STATION and download commands and is not yet explained, nor are `3A1`, `120` or the meaning of the command bytes. The values come from only a few presses and a single room.
+
+An FT3D sending download, message (through a hotspot) used the same command with the first payload character `0` instead of `3`, and its checksum sum starts at offset 13 instead of 22 (two requests, 15 s apart). Radio IDs are case sensitive and can contain lower case letters (`EAggJ`). The checksum rule held for all of them.
 
 ### 5.9 Answering a News Station download with text messages
 

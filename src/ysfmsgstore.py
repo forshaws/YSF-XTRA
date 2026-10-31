@@ -226,7 +226,7 @@ class PosReader(object):
 
 
 NEWS_MAX = 50
-RID_RE = re.compile(r"^[A-Z0-9]{5}$")
+RID_RE = re.compile(r"^[A-Za-z0-9]{5}$")
 
 
 class NewsQueue(object):

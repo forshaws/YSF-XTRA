@@ -388,7 +388,7 @@ def parse_record(buf):
         "text": buf[t0:etx].decode("latin-1").rstrip(),
         "to_call": buf[t0 - 10:t0].decode("latin-1").strip(),
         "to_id": buf[t0 - 15:t0 - 10].decode("latin-1").strip(),
-        "ok": (sum(buf[22:etx]) & 0xFF) == body[-1],
+        "ok": body[-1] in (sum(buf[22:etx]) & 0xFF, sum(buf[13:etx]) & 0xFF),   # FT5D sums from 22, FT3D from 13
         "etx": etx,
     }
 

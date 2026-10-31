@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 
+from datetime import datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
@@ -30,6 +31,23 @@ from ysfdash import State, ThreadedServer, tail_loop
 
 SYS_INTERVAL = 2.0
 ysfdash.LAST_HEARD_SHOWN = 60  # scrollable history of recent transmissions
+WATCHDOG = "Network watchdog has expired"
+
+
+class RadioState(State):
+    """State that also ends the transmission in progress when the reflector logs a
+    network watchdog expiry (a station that stops without an end-of-transmission)."""
+
+    def handle(self, line):
+        State.handle(self, line)
+        m = ysfdash.LINE_RE.match(line.rstrip("\r\n"))
+        if m and m.group(2).startswith(WATCHDOG):
+            try:
+                ts = datetime.strptime(m.group(1), ysfdash.TS_FMT)
+            except ValueError:
+                return
+            with self.lock:
+                self._finish(ts)
 
 
 class SysStats(object):
@@ -1022,6 +1040,7 @@ JS = r"""
   var nodeShown = null;
   function render(d) {
     if (d.fade) { FADE = d.fade; }
+    if (d.tot) { FULL = d.tot; }
     last = d; admin = d.admin || null;
     var nt = d.now_talking, lh = d.last_heard.length ? d.last_heard[0] : null;
     var call = nt ? nt.src : (lh ? lh.src : '------');
@@ -1234,6 +1253,7 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 d["system"] = stats.snapshot()
                 d["node"] = args.node
                 d["fade"] = args.fade
+                d["tot"] = args.tot
                 d["loc"] = loc
                 self._menu_status(d)
                 d["msg"] = self._msg_status("msgreader")
@@ -1456,6 +1476,8 @@ def main():
                    help="serve under a URL path prefix, e.g. /dash (also works behind a proxy that strips it)")
     p.add_argument("--fade", type=int, default=20,
                    help="seconds after a transmission before the callsign darkens (default 20)")
+    p.add_argument("--tot", type=int, default=60,
+                   help="seconds the talk meter takes to fill, set to your reflector's time-out (default 60)")
     p.add_argument("--grid", default="",
                    help="Maidenhead locator shown with a map pin, e.g. IO91 or IO91WM")
     p.add_argument("--lat", type=float, help="latitude (alternative to --grid)")
@@ -1510,6 +1532,7 @@ def main():
     args.name = args.name[:40]
     args.node = re.sub(r"[^A-Za-z0-9/]", "", args.node)[:12].upper()
     args.fade = max(1, min(600, args.fade))
+    args.tot = max(10, min(600, args.tot))
     args.base = args.base.rstrip("/")
     if args.base and not re.match(r"^/[A-Za-z0-9_-]+$", args.base):
         raise SystemExit("--base must look like /dash")
@@ -1527,7 +1550,7 @@ def main():
     if args.public_host and not re.match(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$", args.public_host):
         raise SystemExit("--public-host must be a plain host name")
 
-    state = State()
+    state = RadioState()
     stats = SysStats()
     stop = threading.Event()
 
