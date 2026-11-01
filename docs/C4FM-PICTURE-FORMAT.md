@@ -11,7 +11,7 @@ Observed on an FT5D with a camera microphone, through a Pi-Star hotspot to a pYS
 | PIC1 | 160x120 | LOW | 2559 bytes, 3 chunks, rebuilt and verified |
 | PIC2 | 320x240 | HIGH | 18027 bytes, 18 chunks, rebuilt; 2 of 614 frames lost in transit, detected by the check sum |
 
-Not captured: NORMAL quality, 160x120 HIGH, 320x240 LOW, FT3D, FTM400, a picture sent to a single callsign, and a radio downloading a picture from the News Station. Size and quality only change the number of chunks in the captures made.
+Not captured: NORMAL quality, 160x120 HIGH, 320x240 LOW, FT3D, FTM400, a picture sent to a single callsign, and the reply to a picture download from the News Station. Size and quality only change the number of chunks in the captures made.
 
 ## 2. Transport
 
@@ -96,6 +96,6 @@ The concatenated chunk data is a baseline JPEG: it starts `FF D8 FF E0` (JFIF) a
 
 - Meaning of byte 60 and of the second `Ne_` field (it matched 2 x (chunks - 1) in both captures).
 - What the `H` at `Nd_` offset 106 selects.
-- What a radio sends to ask the News Station for a picture and what it expects back.
+- What a radio expects back after a News Station picture download. The request is the `]l_` command of `C4FM-TEXT-MESSAGE-FORMAT.md` 5.8 with `2` after the station ID (`3` `14561` `17989` `220`), from an FT5D; whether a directed picture transfer ends the radio's wait is not tested.
 - Behaviour for pictures sent to a single callsign or to a room.
 - Whether the FT3D and FTM400 send the same records.

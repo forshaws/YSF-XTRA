@@ -286,6 +286,10 @@ class Decoder(object):
             sys.stderr.write("ysfmsgd: news request type %r not answered\n" % rec[64:65].decode("latin-1"))
             sys.stderr.flush()
             return
+        if rec[75:76] in (b"2", b"3"):                  # 1 = message; 2 = picture, 3 = voice are not served yet
+            sys.stderr.write("ysfmsgd: news download of type %r (2 picture, 3 voice) not answered\n" % rec[75:76].decode("latin-1"))
+            sys.stderr.flush()
+            return
         if rec[5:10] != rec[55:60]:
             return
         rid, call = field(rec[5:10]), field(rec[10:20])

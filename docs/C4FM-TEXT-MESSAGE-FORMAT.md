@@ -241,15 +241,16 @@ Commands seen (FT5D, a YSF reflector reached through a gateway; no reply was rec
 | Category "Local News" selected | `5d 66 5f` (`]f_`) | 3 (2) | `3A1` |
 | NEWS STATION selected | `5d 63 5f` (`]c_`) | 2 (1) | `3DNEWS17989` |
 | download, message | `5d 6c 5f` (`]l_`) | 3 (2) | `3` `14561` `17989` `120` and spaces, then `0` at offset 83 |
+| download, picture | `5d 6c 5f` (`]l_`) | 3 (2) | `3` `14561` `17989` `220` and spaces, then `0` at offset 83 |
 | upload, message entered and sent | `47 65 5f` (`Ge_`) | 5 (4) | normal text record, destination ID `14561`, destination callsign `GB-CCARC` |
 
-The destination of the message sent from the WIRES-X screen was the room's ID `14561` and its name `GB-CCARC` instead of blank and `**********`. The same `14561` appears in the download command. `17989` appears in both the NEWS STATION and download commands and is not yet explained, nor are `3A1`, `120` or the meaning of the command bytes. The values come from only a few presses and a single room.
+The destination of the message sent from the WIRES-X screen was the room's ID `14561` and its name `GB-CCARC` instead of blank and `**********`. The same `14561` appears in the download command. `17989` appears in both the NEWS STATION and download commands and is not yet explained, nor are `3A1`, the trailing `20` or the meaning of the command bytes. The digit after `17989` selects the download type: `1` message, `2` picture. The values come from only a few presses and a single room.
 
-An FT3D sending download, message (through a hotspot) used the same command with the first payload character `0` instead of `3`, and its checksum sum starts at offset 13 instead of 22 (two requests, 15 s apart). Radio IDs are case sensitive and can contain lower case letters (`EAggJ`). The checksum rule held for all of them.
+An FT3D sending download, message (through a hotspot) used the same command with the first payload character `0` instead of `3`, and its checksum sum starts at offset 13 instead of 22 (two requests, 15 s apart). Radio IDs are case sensitive and can contain lower case letters (`EAggJ`). The FT3D's ordinary text messages (a GPS-attached `Gf_` record to `**********`) use the same offset-13 checksum, so a receiver should accept a sum starting at either 22 or 13. The checksum rule held for all of them.
 
 ### 5.9 Answering a News Station download with text messages
 
-With the radio on the News Station screen (download, message) showing "Waiting", a directed text message (5.4: destination ID and callsign of the radio) sent to the reflector cleared the wait and opened the radio's message log (FT5D). Three directed messages sent one after another all arrived. No WIRES-X reply format was needed. The request is the `]l_` record of 5.8; the requester's radio ID is at offset 5 and 55 and its callsign at offset 10. An upload from the News Station screen is a single text record (`Ge_`) whose destination ID and callsign are the room's (5.8), with no other command. The voice and picture download requests were not captured and may use the same command.
+With the radio on the News Station screen (download, message) showing "Waiting", a directed text message (5.4: destination ID and callsign of the radio) sent to the reflector cleared the wait and opened the radio's message log (FT5D). Three directed messages sent one after another all arrived. No WIRES-X reply format was needed. The request is the `]l_` record of 5.8; the requester's radio ID is at offset 5 and 55 and its callsign at offset 10. An upload from the News Station screen is a single text record (`Ge_`) whose destination ID and callsign are the room's (5.8), with no other command. The picture download request (5.8) is the same `]l_` command with `2` in place of `1`; the voice request was not captured and probably uses `3`.
 
 ## 6. Decoding procedure
 
