@@ -93,6 +93,42 @@ def udp_payload(frame, port):
     return ip[ihl + 8:ihl + ulen]
 
 
+class Activity(object):
+    """Tells the dashboard what kind of data transmission is being received: "pic" (a picture
+    transfer) or "data" (a text message or other data). One small file, rewritten at most once a
+    second and cleared at the end of each stream; the dashboard ignores it when it is stale."""
+
+    def __init__(self, path):
+        self.path = path
+        self.cur = ("", "")
+        self.t = 0.0
+        self.failed = False
+
+    def _write(self, kind, call, now):
+        try:
+            tmp = self.path + ".tmp"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+            with os.fdopen(fd, "w") as f:
+                f.write('{"t": %.1f, "kind": "%s", "call": "%s"}' % (now, kind, call))
+            os.replace(tmp, self.path)
+        except OSError as e:
+            if not self.failed:
+                self.failed = True
+                sys.stderr.write("ysfmsgd: cannot write %s: %s\n" % (self.path, e))
+                sys.stderr.flush()
+
+    def note(self, call, kind, now):
+        if (kind, call) != self.cur or now - self.t >= 1.0:
+            call = "".join(c for c in call if c.isalnum() or c in "/-")[:12]
+            self.cur, self.t = (kind, call), now
+            self._write(kind, call, now)
+
+    def clear(self, now):
+        if self.cur[0]:
+            self.cur, self.t = ("", ""), now
+            self._write("", "", now)
+
+
 def field(b):
     return b.decode("ascii", "replace").replace("\x00", " ").strip()
 
@@ -100,9 +136,10 @@ def field(b):
 class Decoder(object):
     """Turns YSFD packets into stored messages."""
 
-    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None):
+    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None, act=None):
         self.store = store
         self.pics = pics                    # ysfpic.PicRx or None
+        self.act = act                      # Activity or None
         self.pos = pos
         self.news = news
         self.news_last = {}
@@ -167,8 +204,17 @@ class Decoder(object):
             a["segs"].setdefault(f["FN"], parts[0] + parts[1])
             if self.pics is not None:
                 a["frames"].append((ctr, f["FN"], f["FT"], parts[0] + parts[1]))
+            if "kind" not in a:
+                if f["FN"] == 1:             # record tag sits at bytes 61-63 of the block
+                    a["kind"] = "pic" if (parts[0] + parts[1])[21:24] in (b"Gh_", b"Nd_", b"Nb_", b"Ne_") else "data"
+                elif f["FN"] >= 2:
+                    a["kind"] = "data"
+        if self.act is not None and f["FI"] == 1 and "kind" in a:
+            self.act.note(src, a["kind"], now)
         if ctr & 1:                          # end flag: terminator frame
             del self.asm[key]
+            if self.act is not None:
+                self.act.clear(now)
             if self.pics is not None and a["frames"]:
                 pid = self.pics.stream_end(gw, src, a["frames"], now)
                 if pid is not None:
@@ -328,6 +374,8 @@ def main():
                     help="whitelist file; only these callsigns' pictures are kept (edited in the dashboard admin)")
     ap.add_argument("--pictures-per-hour", type=int, default=5, help="most pictures kept per callsign per hour")
     ap.add_argument("--pictures-days", type=int, default=7, help="drop pictures older than this")
+    ap.add_argument("--activity-out", default="/var/lib/ysfradio/activity.json",
+                    help="file telling the dashboard a picture or data transfer is in progress (empty = off)")
     a = ap.parse_args()
     if not hasattr(socket, "AF_PACKET"):
         raise SystemExit("needs Linux")
@@ -344,7 +392,8 @@ def main():
         pics = ysfpic.PicRx(ysfpic.PicFile(a.pictures_dir, max(1, a.pictures_days)),
                             ysfpic.Allow(a.pictures_allow), max(1, a.pictures_per_hour))
     dec = Decoder(ysfmsgstore.MsgFile(a.out, max(1, a.keep_days)), a.per_hour, pos, news,
-                  board, a.board_room_id, a.board_per_hour, pics)
+                  board, a.board_room_id, a.board_per_hour, pics,
+                  Activity(a.activity_out) if a.activity_out else None)
     signal.signal(signal.SIGTERM, lambda *x: sys.exit(0))
     sys.stderr.write("ysfmsgd: watching UDP %d, writing %s\n" % (a.port, a.out))
     sys.stderr.flush()

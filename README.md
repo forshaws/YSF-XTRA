@@ -175,7 +175,24 @@ A radio's News Station "download, message" is answered with the lines of `news.t
 
 Edit `/var/lib/ysfradio/news.txt` at any time (one message per line, 80 characters at most, `{call}` becomes the requester's callsign); no restart is needed. `docs/README-news.md` has the options and the board tool.
 
-### 7. DMR X-link toggle (optional)
+### 7. Pictures from camera microphones (optional)
+
+Pictures sent from a Yaesu radio with a camera microphone can be kept and shown in the dashboard (MENU > LOG > PICTURES). Only senders on a whitelist are kept. See `docs/C4FM-PICTURE-FORMAT.md`.
+
+```
+sudoedit /etc/systemd/system/ysfmsg.service     # add: --pictures-dir /var/lib/ysfradio/pictures
+sudoedit /etc/systemd/system/ysfradio.service   # add: --pictures
+sudo systemctl daemon-reload
+sudo systemctl restart ysfmsg ysfradio
+```
+
+Add senders in the dashboard: MENU > PIC SENDERS (admin PIN), ADD SENDER with the callsign and, optionally, the radio ID. The list is stored in `/var/lib/ysfradio/picture-allow.json`. A callsign with no radio ID matches any radio. Pictures from other callsigns are ignored and logged once. Kept pictures: 20 at most, 7 days, 5 per callsign per hour, 64 KB each. A picture with a lost frame is kept and marked DAMAGED. An admin can delete a picture with DEL.
+
+Radios cannot yet download pictures from the News Station; this is receive and display only.
+
+While a picture or text message is being received, the dashboard shows DATA on the lamp, PICTURE DATA (or MESSAGE DATA) on the blue bar and PICTURE TO (or MESSAGE TO) on the route line, then returns to DIGITAL VOICE. `ysfmsgd.py` writes `/var/lib/ysfradio/activity.json` for this (`--activity-out`, empty = off); the dashboard ignores it when older than 6 seconds.
+
+### 8. DMR X-link toggle (optional)
 
 Only for a reflector bridged to DMR with MMDVM_Bridge. See `docs/README-menu.md`.
 
@@ -215,6 +232,7 @@ Keep your own `.service` files; only compare them with the ones in `systemd/`. R
 - Reads the reflector's UDP port with a kernel packet filter (needs `CAP_NET_RAW`, never transmits).
 - Decodes broadcast text messages and the position carried in GPS-attached messages and in voice transmissions.
 - Writes `messages.json` and `positions.json` for the dashboard. Directed message text is discarded unread.
+- With `--pictures-dir`, assembles pictures from camera microphones (`src/ysfpic.py`) and keeps those from whitelisted senders.
 - Also recognises WIRES-X News Station requests: a download request is queued for `ysfnews.py`, and an upload (a text addressed to the News Station room ID) is kept as a public news item.
 
 **News Station responder** (`src/ysfnews.py`, `docs/README-news.md`)
@@ -246,6 +264,8 @@ Keep your own `.service` files; only compare them with the ones in `systemd/`. R
 | File | Content |
 |---|---|
 | `docs/C4FM-TEXT-MESSAGE-FORMAT.md` | The text message format, frame coding, checksum, addressing, GPS block, voice position |
+| `docs/C4FM-PICTURE-FORMAT.md` | The camera microphone picture format: records, chunks, check sums, receiving |
+| `docs/LIMITS-AND-TIMEOUTS.md` | Rate limits, retention and timers, with the option that sets each |
 | `docs/README-ysfdash.md` | The original read-only dashboard (`ysfdash.py`) |
 | `docs/README-menu.md` | MENU, DMR toggle, location, distance and RADAR; install and options |
 | `docs/README-messages.md` | LOG > MESSAGE, LOG > NEWS, admin delete, radio positions; install, options, what is kept |
@@ -260,9 +280,11 @@ Keep your own `.service` files; only compare them with the ones in `systemd/`. R
 | `/api/status` | JSON: now talking, linked gateways, last heard, top callers, positions, menu state |
 | `/api/messages` | JSON: the last 20 broadcast messages, newest first (`--messages`) |
 | `/api/news` | JSON: the News Station uploads, newest first (`--news`) |
+| `/api/pictures` | JSON: the kept pictures, newest first (`--pictures`) |
+| `/pic/<id>.jpg` | A kept picture (`--pictures`) |
 | `/healthz` | `ok` |
 
-Admin actions (DMR toggle, `POST /api/delete` for messages and news items) are POST requests behind the PIN, a session cookie and a CSRF header: see `docs/README-menu.md` and `docs/README-messages.md`.
+Admin actions (DMR toggle, `POST /api/delete` for messages, news items and pictures, `POST /api/picallow` for the picture sender whitelist) are POST requests behind the PIN, a session cookie and a CSRF header: see `docs/README-menu.md` and `docs/README-messages.md`.
 
 ## Security
 

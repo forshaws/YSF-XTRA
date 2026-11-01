@@ -289,6 +289,7 @@ font-size:calc(var(--u)*3.2);color:var(--white);white-space:nowrap;overflow:hidd
 color:#fff;padding:0 calc(var(--u)*1.6);font-weight:700;font-size:calc(var(--u)*3.6);
 letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;overflow:hidden}
 .refl span.n{font-size:calc(var(--u)*2.6);letter-spacing:0}
+.refl span.n.act{background:#ffd35a;color:#2a1c00;padding:0 calc(var(--u)*1.2);border-radius:calc(var(--u)*.4);animation:mp 1.6s steps(2) infinite}
 .meter{display:flex;align-items:center;gap:calc(var(--u)*.5);padding:0 calc(var(--u)*1.6)}
 .seg{flex:1;height:55%;background:#16181d}
 .seg.on{background:var(--white)}
@@ -420,6 +421,7 @@ font-size:calc(var(--u)*3)}
 .gmk{margin-left:auto}
 .refl{padding:calc(var(--u)*1.4) calc(var(--u)*1.6)}
 .refl span.n{display:none}
+.refl span.n.act{display:inline}
 .meter{height:calc(var(--u)*5)}
 .panels{display:block}
 .panel{height:calc(var(--u)*32);border-right:0;border-bottom:1px solid #1d1d20}
@@ -1197,6 +1199,10 @@ JS = r"""
     live = !!nt;
     paintCall();
     $('lamp').className = 'lamp' + (nt ? ' on' : '');
+    var act = (nt && d.act && d.act.call === nt.src) ? d.act.kind : '';   // pic / data while a transfer is in progress
+    $('lamp').textContent = act ? 'DATA' : 'BUSY';
+    $('mode').textContent = act === 'pic' ? 'PICTURE DATA' : (act === 'data' ? 'MESSAGE DATA' : 'DIGITAL VOICE');
+    $('mode').className = 'n' + (act ? ' act' : '');
     if (nt) {
       var di = destInfo(nt.dest); talkId = di.id;
       var key = nt.src + '|' + nt.dest + '|' + nt.gw;
@@ -1204,7 +1210,7 @@ JS = r"""
         talkStart = Date.now() - nt.elapsed * 1000;
         curKey = key;
       }
-      $('rlab').textContent = 'TO';
+      $('rlab').textContent = act === 'pic' ? 'PICTURE TO' : (act === 'data' ? 'MESSAGE TO' : 'TO');
       $('dest').textContent = di.to + '   VIA ' + nt.gw;
     } else {
       talkStart = null; talkId = '';
@@ -1316,7 +1322,7 @@ INDEX = """<!doctype html>
 <div class="vfo"><div class="band">A</div><div id="call" class="call old">------</div>
 <div class="side"><div id="lamp" class="lamp">BUSY</div><div id="timer" class="timer idle">00:00</div><div id="rid" class="rid"></div></div></div>
 <div class="route"><b id="rlab">LAST</b><span id="dest"></span><span id="rdist" class="rdist"></span><button id="gmbtn" class="menubtn gmk hidden" type="button">RADAR</button></div>
-<div class="refl"><span id="rname"></span><span class="n">DIGITAL VOICE</span></div>
+<div class="refl"><span id="rname"></span><span id="mode" class="n">DIGITAL VOICE</span></div>
 <div id="meter" class="meter"></div>
 <div class="panels">
 <div class="panel"><h2><span>LINKED</span><span id="lkar" class="ar"></span></h2><div id="linked" class="rows"></div></div>
@@ -1405,6 +1411,7 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 d["msg"] = self._msg_status("msgreader")
                 d["news"] = self._msg_status("newsreader")
                 d["pics"] = self._msg_status("picreader")
+                d["act"] = _activity(args.activity_file)
                 body = json.dumps(d).encode("utf-8")
                 self._send(200, "application/json", body, head_only)
             elif path in ("/api/messages", "/api/news"):
@@ -1631,6 +1638,20 @@ def feed_loop(state, aprs, stop):
         stop.wait(10)
 
 
+def _activity(path):
+    """What ysfmsgd.py says is being received right now ({"kind": "pic"|"data", "call"}), else None.
+    Ignored when older than 6 seconds, so a stopped ysfmsgd or a failed transfer cannot leave it stuck."""
+    try:
+        with open(path, "r") as f:
+            a = json.loads(f.read(512))
+        if (isinstance(a, dict) and a.get("kind") in ("pic", "data") and isinstance(a.get("call"), str)
+                and isinstance(a.get("t"), (int, float)) and 0 <= time.time() - a["t"] <= 6):
+            return {"kind": a["kind"], "call": a["call"]}
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def make_pin_cli(state_dir):
     import getpass
     path = os.path.join(state_dir, "pin")
@@ -1689,6 +1710,8 @@ def main():
                    help="news board file written by ysfmsgd.py (default: <state-dir>/newsboard.json)")
     p.add_argument("--pictures", action="store_true",
                    help="show pictures kept by ysfmsgd.py and manage the sender whitelist (MENU > LOG > PICTURES)")
+    p.add_argument("--activity-file", default="",
+                   help="file written by ysfmsgd.py that marks picture/data transfers (default: <state-dir>/activity.json)")
     p.add_argument("--pictures-dir", default="",
                    help="picture folder written by ysfmsgd.py (default: <state-dir>/pictures)")
     p.add_argument("--pictures-allow", default="",
@@ -1712,6 +1735,7 @@ def main():
         args.newsreader = ysfmsgstore.MsgReader(npath)
         args.newswriter = ysfmsgstore.MsgFile(npath)
     args.picreader = args.picallow = None
+    args.activity_file = args.activity_file or os.path.join(args.state_dir, "activity.json")
     if args.pictures or args.pictures_dir:
         args.picreader = ysfpic.PicFile(args.pictures_dir or os.path.join(args.state_dir, "pictures"))
         args.picallow = ysfpic.Allow(args.pictures_allow or os.path.join(args.state_dir, "picture-allow.json"))
