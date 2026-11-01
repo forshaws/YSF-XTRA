@@ -79,7 +79,7 @@ The `Nd_`, `Nb_` and `Ne_` records carry no destination, so the `Gh_` record is 
 - Each chunk carries 1024 bytes of the JPEG, spread over four blocks: 250 bytes in the first block (offset 70-319) and 259 bytes in each of the next three (offset 61-319). The last chunk carries the remainder (619 bytes in PIC2).
 - Bytes 68-69 hold the chunk length: `0000` for a full 1024-byte chunk, the actual length for the last chunk (`01FF` = 511 in PIC1, `026B` = 619 in PIC2).
 - After the data come `0x03` (ETX), a check byte and `0x00` padding.
-- The check byte is the sum of the bytes from offset 22 of the first block up to the ETX, modulo 256, taking the data bytes of the continuation blocks without their repeated headers. This matches the text message rule. It held for the PIC1 chunk tested.
+- The check byte is the sum of the bytes from offset 60 of the first block up to and including the ETX, modulo 256, taking the data bytes of the continuation blocks without their repeated headers. This matches the text message rule. It held for the PIC1 chunk tested.
 
 ## 6. End record (`Ne_`)
 

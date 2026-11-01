@@ -281,8 +281,8 @@ class Decoder(object):
         if (self.news is None and self.picreq is None) or rec[61:64] != b"]l_" or not rec[65:75].isdigit():
             return
         etx = rec.find(b"\x03", 64)
-        if etx < 0 or etx + 1 >= len(rec) or rec[etx + 1] not in (sum(rec[22:etx]) & 0xFF, sum(rec[13:etx]) & 0xFF):
-            return                                    # checksum starts at byte 22 (FT5D) or 13 (FT3D)
+        if etx < 0 or etx + 1 >= len(rec) or rec[etx + 1] != (sum(rec[60:etx + 1]) & 0xFF):
+            return                                    # checksum: byte 60 up to and including the ETX
         if rec[64:65] not in (b"3", b"0"):             # 3 = FT5D, 0 = FT3D: message downloads
             sys.stderr.write("ysfmsgd: news request type %r not answered\n" % rec[64:65].decode("latin-1"))
             sys.stderr.flush()

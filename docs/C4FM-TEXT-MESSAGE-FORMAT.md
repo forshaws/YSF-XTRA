@@ -150,12 +150,10 @@ FT is 4 for this record length.
 ### 5.3 Checksum
 
 ```
-checksum = sum(record[22:190]) & 0xFF
+checksum = sum(record[60:191]) & 0xFF
 ```
 
-That is the sum of bytes 22 to 189 inclusive, modulo 256, stored at offset 191. It held for all eleven observed records (200 and 240 byte lengths, several texts, broadcast and addressed).
-
-Caveat: every sample used the same callsign and radio ID, so bytes 0 to 40 were constant. Start offset 22 is the only start that fits all samples, but a sender with a different callsign has not been tested against a real receiver (see section 9).
+That is the sum of bytes 60 to 190 inclusive (the counter byte up to and including the `0x03`), modulo 256, stored at offset 191. The radio ID, callsign and address fields in bytes 0 to 59 are not part of it. It held for every record captured from an FT5D, an FT3D and an FTM-400 (text, GPS-attached text, News Station requests, picture records).
 
 ### 5.4 Addressing
 
@@ -246,9 +244,9 @@ Commands seen (FT5D, a YSF reflector reached through a gateway; no reply was rec
 
 The destination of the message sent from the WIRES-X screen was the room's ID `14561` and its name `GB-CCARC` instead of blank and `**********`. The same `14561` appears in the download command. `17989` appears in both the NEWS STATION and download commands and is not yet explained, nor are `3A1`, the trailing `20` or the meaning of the command bytes. The digit after `17989` selects the download type: `1` message, `2` picture. The values come from only a few presses and a single room.
 
-An FT3D sending download, message (through a hotspot) used the same command with the first payload character `0` instead of `3`, and its checksum sum starts at offset 13 instead of 22 (two requests, 15 s apart). Radio IDs are case sensitive and can contain lower case letters (`EAggJ`). The FT3D's ordinary text messages (a GPS-attached `Gf_` record to `**********`) use the same offset-13 checksum, so a receiver should accept a sum starting at either 22 or 13. The checksum rule held for all of them.
+An FT3D sending download, message (through a hotspot) used the same command with the first payload character `0` instead of `3` (two requests, 15 s apart). Radio IDs are case sensitive and can contain lower case letters (`EAggJ`).
 
-An FTM-400 (broadcast text with GPS attached, `Gf_`, 240 bytes) differs in two ways. The first byte of the position block at offset 64 is `%` (`0x25`) instead of `3`, and the voice position (section 6) carries the same `%`. The checksum is the sum of bytes 60 to the `0x03` inclusive, modulo 256, stored after the `0x03`. A receiver should accept the sum from 22, from 13 or from 60 (inclusive of `0x03`). The FTM-400 also sent a 2-frame record with command `]q_` (`%` payload) before the message, which is not decoded. One capture, one message.
+An FTM-400 (broadcast text with GPS attached, `Gf_`, 240 bytes) starts the position block at offset 64 with `%` (`0x25`) instead of `3`, and the voice position (section 6) carries the same `%`. Bytes 0 to 9 are `**********` and the radio ID at 55 is `F0VqE`. It also sent a 2-frame record with command `]q_` (`%` payload) before the message, which is not decoded. One capture, one message.
 
 ### 5.9 Answering a News Station download with text messages
 
@@ -327,7 +325,7 @@ Test vector: `whitening(40)` packed into bytes is `93 d7 51 21 9c`.
 
 - **GPS-attached messages.** Decoding is done (5.6). Not yet tested: sending one to a receiving radio, the south and east/west flags beyond the cases above, longitudes of 10 degrees or more, and what the radio does with the symbol bytes and the message bits.
 - **Meaning of fixed fields:** `*****`, the three callsign copies, `Ge_`/`Gf_`, the `3`, `0`, `00` markers, and the counter byte are reproduced exactly but not explained. The counter byte's wrap-around is not understood.
-- **Other callsigns and radio IDs:** the checksum range and field layout were validated with one sender identity. A real receiver has not been tested with different identities or callsign lengths.
+- **Other callsigns and radio IDs:** a real receiver has not been tested with different identities or callsign lengths.
 - **FICH fields** other than FI, FN, FT and DT, and their values for other message types.
 - **WIRES-X:** only the requests from a radio were captured (5.8). Replies from a node, other commands, and the meaning of the payload fields are unknown.
 - **Directed messages** were generated and received by an FT5D (5.9). Other models were not tested.

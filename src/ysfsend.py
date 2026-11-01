@@ -53,7 +53,7 @@ def build_record(text, seq, stamp, call, radio_id, to_call="*" * 10, to_id=""):
     rec[100:110] = to_call.ljust(10)[:10].encode("ascii")
     rec[110:190] = text.ljust(80)[:80].encode("ascii")
     rec[190] = 3
-    rec[191] = sum(rec[22:190]) & 0xFF
+    rec[191] = sum(rec[60:191]) & 0xFF
     rec[192:200] = b"\0" * 8
     return bytes(rec)
 

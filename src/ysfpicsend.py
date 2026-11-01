@@ -60,7 +60,7 @@ def gh_block(call, rid, b60, seq, stamp_a, stamp_b, to_id, to_call, shown, lat, 
     b += to_id.ljust(5)[:5].encode("ascii") + to_call.ljust(10)[:10].encode("ascii")
     b += shown.encode("ascii")
     b += b"\x03"
-    b.append(_chk([b[22:-1]]))
+    b.append(_chk([b[60:]]))
     return _pad(b)
 
 
@@ -74,7 +74,7 @@ def nd_block(call, rid, b60, lat, lon, size, stamp14, name, shown, alt_m=0, spee
     b += ysfpos.encode_block(lat2, lon2, 0, 0, None, symbol=b"YY")[1:]
     b += shown.encode("ascii")
     b += b"\x03"
-    b.append(_chk([b[22:-1]]))
+    b.append(_chk([b[60:]]))
     return _pad(b)
 
 
@@ -89,7 +89,7 @@ def nb_blocks(call, rid, b60, num, data):
     blocks = [first]
     for p in pieces:
         blocks.append(_head(call, rid, 0) + p)
-    cs = _chk([bytes(first[22:]), data[FIRST:]])
+    cs = _chk([bytes(first[60:]), data[FIRST:], b"\x03"])
     tail += bytes([cs]) + ZERO
     last = blocks[-1] + tail
     cap = 320 if len(blocks) > 1 else 320
@@ -118,7 +118,7 @@ def ne_block(call, rid, b60, endnum, total_sum, nchunks):
     b = _head(call, rid, b60)
     b += b"Ne_3P" + endnum.to_bytes(2, "big") + (2 * (nchunks - 1)).to_bytes(2, "big")
     b += (total_sum & 0xFFFF).to_bytes(2, "big") + b"\x03"
-    b.append(_chk([b[22:-1]]))
+    b.append(_chk([b[60:]]))
     return _pad(b)
 
 
