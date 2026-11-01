@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 import ysfdash
 import ysfmenu
 import ysfmsgstore
+import ysfpic
 from ysfdash import State, ThreadedServer, tail_loop
 
 SYS_INTERVAL = 2.0
@@ -269,6 +270,7 @@ padding:0 calc(var(--u)*1.6);border-bottom:1px solid #1d1d20}
 font-size:calc(var(--u)*14);color:var(--dim);transition:color 2s ease}
 .call.live{color:var(--white);text-shadow:0 0 calc(var(--u)*1.2) rgba(255,255,255,.35);transition:none}
 .call.old{color:var(--dark)}
+.rid{font-size:calc(var(--u)*2.4);font-weight:700;color:var(--blue);min-height:calc(var(--u)*3);white-space:nowrap}
 .call.mid{font-size:calc(var(--u)*11)}
 .call.small{font-size:calc(var(--u)*7.5)}
 .side{text-align:right}
@@ -281,6 +283,8 @@ box-shadow:0 0 calc(var(--u)*1.6) var(--red)}
 .route{display:flex;align-items:center;padding:0 calc(var(--u)*1.6);
 font-size:calc(var(--u)*3.2);color:var(--white);white-space:nowrap;overflow:hidden}
 .route b{color:var(--blue);margin-right:calc(var(--u)*1)}
+#dest{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.route .rdist,.route .gmk{flex:0 0 auto}
 .refl{display:flex;align-items:center;justify-content:space-between;background:var(--blue);
 color:#fff;padding:0 calc(var(--u)*1.6);font-weight:700;font-size:calc(var(--u)*3.6);
 letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;overflow:hidden}
@@ -342,6 +346,13 @@ border-left:calc(var(--u)*.5) solid transparent;user-select:none;-webkit-user-se
 .mi.dis{color:var(--dim)}
 .mi.sel{background:var(--blue);color:#fff;border-left-color:var(--red)}
 .mi.sel .mv{color:#fff}
+.mlab{padding:calc(var(--u)*1.2) calc(var(--u)*1.6) calc(var(--u)*.4);font-size:calc(var(--u)*2.2);color:var(--blue);font-weight:700}
+.mfield{display:block;width:calc(100% - var(--u)*3.2);margin:0 calc(var(--u)*1.6);font:inherit;font-size:calc(var(--u)*3);color:#fff;background:#14161b;border:1px solid #3a3f4b;padding:calc(var(--u)*.8);-webkit-user-select:text;user-select:text}
+.mfield:focus{outline:0;border-color:var(--blue)}
+.pimg{display:block;width:100%;max-width:calc(var(--u)*64);height:auto;margin-top:calc(var(--u)*.8);border:1px solid #3a3f4b}
+.mb.pic{overflow:hidden;display:flex;flex-direction:column}
+.mb.pic .mr{flex:1;min-height:0;display:flex;flex-direction:column;cursor:default}
+.mb.pic .pimg{flex:1;min-height:0;width:100%;max-width:none;height:auto;object-fit:contain;object-position:center;margin-top:calc(var(--u)*.8);border:0}
 .about{padding:calc(var(--u)*2) calc(var(--u)*1.6);font-size:calc(var(--u)*2.8);line-height:1.7;text-align:center}
 .about a{color:var(--blue);text-decoration:underline;word-break:break-all}
 .mq{text-align:center;font-size:calc(var(--u)*3.4);margin:calc(var(--u)*1) 0 calc(var(--u)*1.4)}
@@ -484,6 +495,13 @@ JS = r"""
   }
 
   /* big callsign: white while live, grey after TX, darker after FADE seconds */
+  var talkId = '';
+  function destInfo(d) {
+    d = String(d || '');
+    if (d === '' || /^\*+$/.test(d)) { return {to: 'ALL', id: ''}; }
+    if (d.indexOf('*****') === 0) { return {to: 'ALL', id: d.slice(5)}; }
+    return {to: d, id: ''};
+  }
   function paintCall() {
     var cls = 'call' + sizeCls;
     if (live) { cls += ' live'; }
@@ -561,6 +579,7 @@ JS = r"""
   var last = null, admin = null, dmrPending = null;
   var gps = null, gpsErr = null, gpsAt = 0;
   var menuOpen = false, view = 'list', sel = 0, pin = '', msg = '', wantDmr = false;
+  var wantAllow = false, allowList = [], allowArm = -1, allowArmAt = 0;
 
   function origin() {
     if (opt.loc === 'GPS') { return gps; }
@@ -591,8 +610,23 @@ JS = r"""
   /* ---- LOG > MESSAGE ---- */
   var seenId = parseInt(store.get('seen', '-1'), 10);
   if (isNaN(seenId)) { seenId = -1; }
-  var msgOpen = false, msgs = [], msel = 0, msgLoaded = false, msgNewFrom = 0, msgLatest = 0, logKind = 'msg', delArm = 0;
+  var msgOpen = false, msgs = [], msel = 0, msgLoaded = false, msgNewFrom = 0, msgLatest = 0, logKind = 'msg', delArm = 0, pvKey = -1;
   var MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  var pseenId = parseInt(store.get('pseen', '-1'), 10);
+  if (isNaN(pseenId)) { pseenId = -1; }
+  function picUnread() {
+    var n = 0;
+    if (last && last.pics) { last.pics.ids.forEach(function (i) { if (i > pseenId) { n++; } }); }
+    return n;
+  }
+  function picUpdate(d) {
+    if (!d.pics) { $('picb').className = 'badge mailb hidden'; return; }
+    if (pseenId < 0) { pseenId = d.pics.latest; store.set('pseen', String(pseenId)); }
+    var n = picUnread();
+    $('picb').className = 'badge mailb' + (n ? '' : ' hidden');
+    $('picn').textContent = n > 9 ? '9+' : String(n);
+    if (msgOpen && logKind === 'pic' && d.pics.latest !== msgLatest) { loadMsgs(false); }
+  }
   function unreadCount() {
     var n = 0;
     if (last && last.msg) { last.msg.ids.forEach(function (i) { if (i > seenId) { n++; } }); }
@@ -620,32 +654,42 @@ JS = r"""
   }
   function buildMsg() {
     var b = $('mgb'); clear(b);
+    b.className = 'mb mgl' + (logKind === 'pic' ? ' pic' : '');
+    pvKey = msel;
     if (!msgs.length) {
       var e = document.createElement('div'); e.className = 'mq';
-      e.textContent = msgLoaded ? (logKind === 'news' ? 'NO NEWS' : 'NO MESSAGES') : 'LOADING...';
+      e.textContent = msgLoaded ? (logKind === 'news' ? 'NO NEWS' : (logKind === 'pic' ? 'NO PICTURES' : 'NO MESSAGES')) : 'LOADING...';
       b.appendChild(e);
     }
     msgs.forEach(function (m, i) {
+      if (logKind === 'pic' && i !== msel) { return; }          // pictures: one at a time, fitted to the screen
       var r = document.createElement('div'); r.className = 'mr' + (i === msel ? ' sel' : '');
       var h = document.createElement('div'); h.className = 'mrh';
       var c = document.createElement('span'); c.textContent = m.call; h.appendChild(c);
       if (m.id > msgNewFrom) { var nw = document.createElement('span'); nw.className = 'mnew'; nw.textContent = 'NEW'; h.appendChild(nw); }
       var t = document.createElement('span'); t.className = 'mrt'; t.textContent = msgTime(m.t); h.appendChild(t);
-      var x = document.createElement('div'); x.className = 'mx'; x.textContent = m.text;
+      if (logKind === 'pic' && !m.ok) { var dm = document.createElement('span'); dm.className = 'mnew'; dm.textContent = 'DAMAGED'; h.insertBefore(dm, t); }
+      var x = document.createElement('div'); x.className = 'mx';
+      x.textContent = logKind === 'pic' ? m.w + 'x' + m.h + '  ' + (m.size / 1024).toFixed(1) + 'KB' : m.text;
       r.appendChild(h); r.appendChild(x);
+      if (logKind === 'pic') {
+        var im = document.createElement('img'); im.className = 'pimg'; im.alt = 'Picture from ' + m.call;
+        im.loading = 'lazy'; im.src = 'pic/' + m.id + '.jpg'; r.appendChild(im);
+      }
       r.addEventListener('click', function () { msel = i; selMsg(); });
       b.appendChild(r);
     });
     selMsg();
   }
   function selMsg() {
+    if (logKind === 'pic' && msgs.length && pvKey !== msel) { buildMsg(); return; }
     var kids = $('mgb').children;
-    for (var i = 0; i < kids.length; i++) {
+    for (var i = 0; logKind !== 'pic' && i < kids.length; i++) {
       if (kids[i].className.indexOf('mr') === 0) { kids[i].className = 'mr' + (i === msel ? ' sel' : '') ; }
     }
     $('mgpos').textContent = msgs.length ? (msel + 1) + '/' + msgs.length : '';
     disarmDel();
-    var el = kids[msel];
+    var el = kids[logKind === 'pic' ? 0 : msel];
     if (msgs.length && el && el.scrollIntoView) { try { el.scrollIntoView({block: 'nearest'}); } catch (e) {} }
   }
   function moveMsg(dir) {
@@ -654,12 +698,12 @@ JS = r"""
   }
   function loadMsgs(first) {
     var x = new XMLHttpRequest();
-    x.open('GET', logKind === 'news' ? 'api/news' : 'api/messages', true);
+    x.open('GET', logKind === 'news' ? 'api/news' : (logKind === 'pic' ? 'api/pictures' : 'api/messages'), true);
     x.onload = function () {
       if (x.status !== 200 || !msgOpen) { return; }
       var j = {}; try { j = JSON.parse(x.responseText); } catch (e) { return; }
       var keep = (!first && msgs[msel]) ? msgs[msel].id : null;
-      msgs = j.msgs || []; msgLoaded = true; msgLatest = msgs.length ? msgs[0].id : 0;
+      msgs = j.msgs || j.pics || []; msgLoaded = true; msgLatest = msgs.length ? msgs[0].id : 0;
       msel = 0;
       if (keep !== null) { for (var i = 0; i < msgs.length; i++) { if (msgs[i].id === keep) { msel = i; } } }
       buildMsg();
@@ -670,10 +714,10 @@ JS = r"""
   function openMsg(kind, fromLog) {
     msgFromLog = fromLog ? sel + 1 : 0;
     closeGm(); if (menuOpen) { closeMenu(); }
-    logKind = kind === 'news' ? 'news' : 'msg';
+    logKind = kind === 'news' ? 'news' : (kind === 'pic' ? 'pic' : 'msg');
     msgOpen = true; msgs = []; msel = 0; msgLoaded = false; msgLatest = 0;
-    msgNewFrom = logKind === 'news' ? 1e15 : seenId;
-    $('mgt').textContent = logKind === 'news' ? 'LOG NEWS' : 'LOG MSG';
+    msgNewFrom = logKind === 'msg' ? seenId : (logKind === 'pic' ? pseenId : 1e15);
+    $('mgt').textContent = logKind === 'news' ? 'LOG NEWS' : (logKind === 'pic' ? 'LOG PICTURES' : 'LOG MSG');
     $('mg').className = 'menu'; buildMsg(); loadMsgs(true); $('mback').focus();
   }
   var msgFromLog = 0;
@@ -681,6 +725,7 @@ JS = r"""
     if (!msgOpen) { return; }
     msgOpen = false; $('mg').className = 'menu hidden'; disarmDel();
     if (logKind === 'msg') { markSeen(); }
+    if (logKind === 'pic' && last && last.pics) { pseenId = Math.max(pseenId, last.pics.latest); store.set('pseen', String(pseenId)); picUpdate(last); }
     if (msgFromLog) { var s0 = msgFromLog - 1; msgFromLog = 0; openMenu(); view = 'log'; sel = s0; drawMenu(); return; }
     $('menubtn').focus();
   }
@@ -705,6 +750,7 @@ JS = r"""
     });
   }
   $('mail').addEventListener('click', function () { openMsg('msg'); });
+  $('picb').addEventListener('click', function () { openMsg('pic'); });
   $('mdel').addEventListener('click', delSel);
   $('mback').addEventListener('click', closeMsg);
   $('mtop').addEventListener('click', function () { msel = 0; selMsg(); });
@@ -745,8 +791,9 @@ JS = r"""
     l.push({k: 'loc', label: 'MY LOCATION', val: opt.loc + (opt.loc === 'GPS' ? (gpsErr ? ' ' + gpsErr : (gps ? ' OK' : ' ...')) : '')});
     l.push({k: 'units', label: 'DISTANCE UNIT', val: opt.units === 'MI' ? 'MILES' : 'KM'});
     l.push({k: 'gm', label: 'RADAR VIEW', val: d.aprs ? 'OPEN' : 'N/A', dis: !d.aprs});
-    l.push({k: 'log', label: 'LOG', val: (d.msg || d.news) ? (unreadCount() ? unreadCount() + ' NEW' : 'OPEN') : 'N/A', dis: !(d.msg || d.news)});
+    l.push({k: 'log', label: 'LOG', val: (d.msg || d.news || d.pics) ? (unreadCount() ? unreadCount() + ' NEW' : 'OPEN') : 'N/A', dis: !(d.msg || d.news || d.pics)});
     l.push({k: 'aprs', label: 'APRS POSITIONS', val: d.aprs ? (d.aprs.connected ? 'LIVE ' : 'OFFLINE ') + d.aprs.known : 'N/A', dis: true});
+    l.push({k: 'allow', label: 'PIC SENDERS', val: d.pics ? (admin ? String(allowList.length) : 'ADMIN') : 'N/A', dis: !d.pics});
     l.push({k: 'admin', label: 'ADMIN', val: admin ? 'LOGOUT' : (d.auth ? 'LOGIN' : 'NO PIN SET'), dis: !admin && !d.auth});
     l.push({k: 'about', label: 'ABOUT', val: ''});
     l.push({k: 'exit', label: 'EXIT', val: ''});
@@ -762,9 +809,35 @@ JS = r"""
     var nn = d.news ? d.news.ids.length : 0;
     return [{k: 'message', label: 'MESSAGE', val: d.msg ? n + (u ? '  ' + u + ' NEW' : '') : 'N/A', dis: !d.msg},
             {k: 'news', label: 'NEWS', val: d.news ? String(nn) : 'N/A', dis: !d.news},
+            {k: 'pics', label: 'PICTURES', val: d.pics ? String(d.pics.ids.length) : 'N/A', dis: !d.pics},
             {k: 'back', label: 'BACK', val: ''}];
   }
-  function curItems() { return view === 'confirm' ? confirmItems() : (view === 'log' ? logItems() : menuItems()); }
+  function allowItems() {
+    var l = allowList.map(function (e) { return {k: 'ent', label: e.call, val: e.id || 'ANY RADIO'}; });
+    l.push({k: 'add', label: 'ADD SENDER', val: ''});
+    l.push({k: 'back', label: 'BACK', val: ''});
+    return l;
+  }
+  function loadAllow() {
+    post('api/picallow', {op: 'list'}, function (code, j) {
+      if (code === 200) { allowList = j.allow || []; }
+      else if (code === 401) { admin = null; view = 'pin'; wantAllow = true; pin = ''; msg = 'SESSION EXPIRED'; }
+      if (menuOpen) { drawMenu(); }
+    });
+  }
+  function submitAllow(op, call, id) {
+    post('api/picallow', {op: op, call: call, id: id}, function (code, j) {
+      if (code === 200) { allowList = j.allow || []; msg = op === 'add' ? 'ADDED ' + call : 'REMOVED ' + call; view = 'allow'; sel = 0; }
+      else if (code === 401) { admin = null; view = 'pin'; wantAllow = true; pin = ''; msg = 'SESSION EXPIRED'; }
+      else if (code === 400) { msg = 'BAD CALLSIGN OR RADIO ID'; }
+      else if (code === 404) { msg = 'NOT FOUND'; }
+      else { msg = 'REQUEST FAILED'; }
+      if (menuOpen) { drawMenu(); }
+    });
+  }
+  function curItems() {
+    return view === 'confirm' ? confirmItems() : (view === 'log' ? logItems() : (view === 'allow' ? allowItems() : menuItems()));
+  }
 
   function drawMenu() {
     var body = $('mbody'), title = $('mtitle');
@@ -785,6 +858,19 @@ JS = r"""
       body.appendChild(pad);
       return;
     }
+    if (view === 'addcall') {
+      title.textContent = 'ADD SENDER';
+      $('mnode').textContent = (last && last.node) || '';
+      var l1 = document.createElement('div'); l1.className = 'mlab'; l1.textContent = 'CALLSIGN';
+      var i1 = document.createElement('input'); i1.id = 'acall'; i1.className = 'mfield'; i1.maxLength = 12;
+      i1.setAttribute('autocapitalize', 'characters'); i1.setAttribute('autocomplete', 'off'); i1.setAttribute('spellcheck', 'false');
+      var l2 = document.createElement('div'); l2.className = 'mlab'; l2.textContent = 'RADIO ID (OPTIONAL, 5 CHARACTERS)';
+      var i2 = document.createElement('input'); i2.id = 'aid'; i2.className = 'mfield'; i2.maxLength = 5;
+      i2.setAttribute('autocomplete', 'off'); i2.setAttribute('spellcheck', 'false'); i2.setAttribute('autocapitalize', 'off');
+      body.appendChild(l1); body.appendChild(i1); body.appendChild(l2); body.appendChild(i2);
+      try { i1.focus(); } catch (e) {}
+      return;
+    }
     if (view === 'about') {
       title.textContent = 'ABOUT';
       $('mnode').textContent = (last && last.node) || '';
@@ -800,7 +886,7 @@ JS = r"""
     }
     var items = curItems();
     if (sel >= items.length) { sel = items.length - 1; }
-    title.textContent = view === 'confirm' ? 'CONFIRM' : (view === 'log' ? 'LOG' : 'MENU');
+    title.textContent = view === 'confirm' ? 'CONFIRM' : (view === 'log' ? 'LOG' : (view === 'allow' ? 'PIC SENDERS' : 'MENU'));
     $('mnode').textContent = (last && last.node) || '';
     if (view === 'confirm') {
       var cq = document.createElement('div'); cq.className = 'mq';
@@ -817,13 +903,14 @@ JS = r"""
       body.appendChild(div);
     });
   }
-  function openMenu() { closeGm(); menuOpen = true; view = 'list'; sel = 0; pin = ''; msg = ''; $('menu').className = 'menu'; drawMenu(); $('ksel').focus(); }
+  function openMenu() { closeGm(); menuOpen = true; view = 'list'; sel = 0; pin = ''; msg = ''; wantAllow = false; $('menu').className = 'menu'; drawMenu(); $('ksel').focus(); }
   function closeMenu() { menuOpen = false; $('menu').className = 'menu hidden'; $('menubtn').focus(); }
   function back() {
-    if (view !== 'list') { view = 'list'; pin = ''; msg = ''; drawMenu(); } else { closeMenu(); }
+    if (view === 'addcall') { view = 'allow'; msg = ''; drawMenu(); }
+    else if (view !== 'list') { view = 'list'; pin = ''; msg = ''; wantAllow = false; drawMenu(); } else { closeMenu(); }
   }
   function move(dir) {
-    if (view === 'pin' || view === 'about') { return; }
+    if (view === 'pin' || view === 'about' || view === 'addcall') { return; }
     var n = curItems().length;
     sel = (sel + dir + n) % n; drawMenu();
   }
@@ -847,7 +934,8 @@ JS = r"""
     post('api/login', {pin: p}, function (code, j) {
       if (code === 200 && j.csrf) {
         admin = j.csrf; msg = 'ADMIN OK';
-        view = wantDmr ? 'confirm' : 'list'; sel = 0; wantDmr = false;
+        if (wantAllow) { wantAllow = false; wantDmr = false; view = 'allow'; sel = 0; loadAllow(); }
+        else { view = wantDmr ? 'confirm' : 'list'; sel = 0; wantDmr = false; }
       } else if (code === 429) { msg = 'LOCKED - TRY LATER'; }
       else if (code === 403) { msg = 'WRONG PIN'; }
       else { msg = 'LOGIN UNAVAILABLE'; }
@@ -861,9 +949,23 @@ JS = r"""
     drawMenu();
   }
   function activate() {
-    var it = curItems()[sel]; if (!it && view !== 'about') { return; }
+    var it = curItems()[sel]; if (!it && view !== 'about' && view !== 'addcall') { return; }
     msg = '';
     if (view === 'about') { view = 'list'; drawMenu(); return; }
+    if (view === 'addcall') {
+      var c = ($('acall').value || '').toUpperCase().replace(/\s+/g, ''), rid = ($('aid').value || '').replace(/\s+/g, '');
+      if (!/^[A-Z0-9\/-]{3,12}$/.test(c) || !(rid === '' || /^[A-Za-z0-9]{5}$/.test(rid))) { msg = 'BAD CALLSIGN OR RADIO ID'; drawMenu(); return; }
+      submitAllow('add', c, rid); return;
+    }
+    if (view === 'allow') {
+      if (it.k === 'ent') {
+        var e = allowList[sel];
+        if (allowArm === sel && Date.now() - allowArmAt < 3000) { allowArm = -1; submitAllow('remove', e.call, e.id); return; }
+        allowArm = sel; allowArmAt = Date.now(); msg = 'SELECT AGAIN TO REMOVE ' + e.call;
+      } else if (it.k === 'add') { view = 'addcall'; }
+      else { view = 'list'; sel = 0; }
+      drawMenu(); return;
+    }
     if (view === 'confirm') {
       if (it.k === 'yes') { sendBridge(); return; }
       view = 'list'; drawMenu(); return;
@@ -871,6 +973,7 @@ JS = r"""
     if (view === 'log') {
       if (it.k === 'message' && !it.dis) { var s1 = sel; closeMenu(); sel = s1; openMsg('msg', true); return; }
       if (it.k === 'news' && !it.dis) { var s2 = sel; closeMenu(); sel = s2; openMsg('news', true); return; }
+      if (it.k === 'pics' && !it.dis) { var s4 = sel; closeMenu(); sel = s4; openMsg('pic', true); return; }
       if (it.dis) { drawMenu(); return; }
       view = 'list'; sel = 0; drawMenu(); return;
     }
@@ -889,7 +992,7 @@ JS = r"""
       if (d.aprs) { var s3 = sel; closeMenu(); sel = s3; openGm(true); return; }
       msg = 'NEEDS APRS ON THE SERVER';
     } else if (it.k === 'log') {
-      if (!d.msg && !d.news) { msg = 'NEEDS --messages OR --news ON THE SERVER'; } else { view = 'log'; sel = 0; }
+      if (!d.msg && !d.news && !d.pics) { msg = 'NEEDS --messages, --news OR --pictures ON THE SERVER'; } else { view = 'log'; sel = 0; }
     } else if (it.k === 'units') {
       opt.units = opt.units === 'MI' ? 'KM' : 'MI'; store.set('units', opt.units);
       if (last) { render(last); }
@@ -897,6 +1000,12 @@ JS = r"""
       if (admin) { post('api/logout', {}, function () { admin = null; msg = 'LOGGED OUT'; drawMenu(); }); }
       else if (d.auth) { view = 'pin'; pin = ''; wantDmr = false; }
       else { msg = 'ADMIN PIN NOT SET ON SERVER'; }
+    } else if (it.k === 'allow') {
+      if (!d.pics) { msg = 'NEEDS --pictures ON THE SERVER'; }
+      else if (!admin) {
+        if (!d.auth) { msg = 'ADMIN PIN NOT SET ON SERVER'; }
+        else { view = 'pin'; pin = ''; wantDmr = false; wantAllow = true; }
+      } else { view = 'allow'; sel = 0; loadAllow(); }
     } else if (it.k === 'about') { view = 'about'; }
     else if (it.k === 'exit') { closeMenu(); return; }
     drawMenu();
@@ -907,7 +1016,7 @@ JS = r"""
   $('kdn').addEventListener('click', function () { move(1); });
   $('ksel').addEventListener('click', function () { if (view === 'pin') { submitPin(); } else { activate(); } });
   document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-  document.addEventListener('selectstart', function (e) { e.preventDefault(); });
+  document.addEventListener('selectstart', function (e) { if (!e.target || e.target.tagName !== 'INPUT') { e.preventDefault(); } });
   document.addEventListener('keydown', function (e) {
     if (e.ctrlKey || e.metaKey || e.altKey) { return; }
     if (msgOpen) {
@@ -931,6 +1040,7 @@ JS = r"""
       return;
     }
     if (e.key === 'Escape') { back(); }
+    else if (view === 'addcall') { if (e.key === 'Enter') { activate(); } else { return; } }
     else if (view === 'pin') {
       if (e.key >= '0' && e.key <= '9' && e.key.length === 1) { padKey(e.key); }
       else if (e.key === 'Backspace') { pin = pin.slice(0, -1); drawMenu(); }
@@ -1088,21 +1198,23 @@ JS = r"""
     paintCall();
     $('lamp').className = 'lamp' + (nt ? ' on' : '');
     if (nt) {
+      var di = destInfo(nt.dest); talkId = di.id;
       var key = nt.src + '|' + nt.dest + '|' + nt.gw;
       if (talkStart === null || key !== curKey) {
         talkStart = Date.now() - nt.elapsed * 1000;
         curKey = key;
       }
       $('rlab').textContent = 'TO';
-      $('dest').textContent = nt.dest + '   VIA ' + nt.gw;
+      $('dest').textContent = di.to + '   VIA ' + nt.gw;
     } else {
-      talkStart = null;
+      talkStart = null; talkId = '';
       curKey = null;
       lastDur = lh ? lh.dur : 0;
       $('rlab').textContent = lh ? 'LAST' : '';
-      $('dest').textContent = lh ? (lh.time + '   TO ' + lh.dest + '   VIA ' + lh.gw)
+      $('dest').textContent = lh ? (lh.time + '   TO ' + destInfo(lh.dest).to + '   VIA ' + lh.gw)
                                  : 'WAITING FOR TRAFFIC';
     }
+    $('rid').textContent = nt && talkId ? 'ID ' + talkId : '';
     $('rdist').textContent = distText(call, true);
     $('timer').className = 'timer' + (nt ? '' : ' idle');
     if (!nt) { $('timer').textContent = mmss(lastDur); setMeter(lastDur); }
@@ -1133,7 +1245,7 @@ JS = r"""
       else { dm.className = 'badge off'; dm.textContent = ds === 'failed' ? 'DMR FAIL' : 'DMR OFF'; }
     }
     $('link').textContent = d.stale ? 'NO LOG' : 'LIVE';
-    $('nlinked').textContent = d.linked.length + ' LINKED ' + d.tx_today + 'TX';
+    $('nlinked').textContent = d.linked.length + ' LINKED';
 
     var showD = !!origin() && !!d.aprs;
     rows('linked', d.linked.map(function (r) {
@@ -1154,8 +1266,9 @@ JS = r"""
     gauge('mem', s.mem, 100, '%', 90);
     $('loadv').textContent = (s.load === null || s.load === undefined) ? '--' : s.load.toFixed(2);
     $('upv').textContent = fmt(s.uptime);
-    if (menuOpen && view !== 'pin') { drawMenu(); }
+    if (menuOpen && view !== 'pin' && view !== 'addcall') { drawMenu(); }
     mailUpdate(d);
+    picUpdate(d);
     newsUpdate(d);
     $('gmbtn').className = 'menubtn gmk' + (d.aprs ? '' : ' hidden');
     if (gmOpen) { drawGm(); }
@@ -1193,6 +1306,7 @@ INDEX = """<!doctype html>
 <div class="screen">
 <div class="top"><span class="badge">YSF</span><span id="link" class="badge off">NO LOG</span><span id="dmr" class="badge off hidden">DMR</span>
 <button id="mail" class="badge mailb hidden" type="button" title="New messages" aria-label="New messages"><svg class="env" viewBox="0 0 20 14" aria-hidden="true"><rect x="1" y="1" width="18" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><polyline points="1.5,2 10,8 18.5,2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span id="mailn"></span></button>
+<button id="picb" class="badge mailb hidden" type="button" title="New pictures" aria-label="New pictures"><svg class="env" viewBox="0 0 20 14" aria-hidden="true"><rect x="1" y="1" width="18" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><polyline points="3,11 8,6 11,9 14,5.5 17,11" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="14.5" cy="4" r="1.2" fill="currentColor"/></svg><span id="picn"></span></button>
 <span id="node"></span>
 <a id="loc" class="loc hidden" href="#" target="_blank" rel="noopener noreferrer" title="Node location">
 <svg class="pin" viewBox="0 0 12 16" aria-hidden="true"><path fill="currentColor" d="M6 0C2.7 0 0 2.6 0 5.8 0 10 6 16 6 16s6-6 6-10.2C12 2.6 9.3 0 6 0zm0 8.2a2.4 2.4 0 1 1 0-4.8 2.4 2.4 0 0 1 0 4.8z"/></svg>
@@ -1200,7 +1314,7 @@ INDEX = """<!doctype html>
 <span class="sp"></span><span id="nlinked"></span><span id="clock"></span>
 <button id="menubtn" class="menubtn" type="button">MENU</button></div>
 <div class="vfo"><div class="band">A</div><div id="call" class="call old">------</div>
-<div class="side"><div id="lamp" class="lamp">BUSY</div><div id="timer" class="timer idle">00:00</div></div></div>
+<div class="side"><div id="lamp" class="lamp">BUSY</div><div id="timer" class="timer idle">00:00</div><div id="rid" class="rid"></div></div></div>
 <div class="route"><b id="rlab">LAST</b><span id="dest"></span><span id="rdist" class="rdist"></span><button id="gmbtn" class="menubtn gmk hidden" type="button">RADAR</button></div>
 <div class="refl"><span id="rname"></span><span class="n">DIGITAL VOICE</span></div>
 <div id="meter" class="meter"></div>
@@ -1229,7 +1343,7 @@ INDEX = """<!doctype html>
 """
 
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; "
-       "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+       "img-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
 
 
 def make_handler(state, stats, args, loc, tls=None, menu=None):
@@ -1290,6 +1404,7 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 self._menu_status(d)
                 d["msg"] = self._msg_status("msgreader")
                 d["news"] = self._msg_status("newsreader")
+                d["pics"] = self._msg_status("picreader")
                 body = json.dumps(d).encode("utf-8")
                 self._send(200, "application/json", body, head_only)
             elif path in ("/api/messages", "/api/news"):
@@ -1299,6 +1414,20 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 else:
                     self._send(200, "application/json",
                                json.dumps({"msgs": rd.get()}).encode("utf-8"), head_only)
+            elif path == "/api/pictures":
+                rd = getattr(args, "picreader", None)
+                if rd is None:
+                    self._send(404, "text/plain", b"not found\n", head_only)
+                else:
+                    self._send(200, "application/json",
+                               json.dumps({"pics": rd.get()}).encode("utf-8"), head_only)
+            elif re.match(r"^/pic/[0-9]{1,9}\.jpg$", path):
+                rd = getattr(args, "picreader", None)
+                data = rd.read(int(path[5:-4])) if rd is not None else None
+                if data is None:
+                    self._send(404, "text/plain", b"not found\n", head_only)
+                else:
+                    self._send(200, "image/jpeg", data, head_only)
             elif path == "/healthz":
                 self._send(200, "text/plain", b"ok\n", head_only)
             else:
@@ -1366,7 +1495,7 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
             base = args.base
             if base and path.startswith(base + "/"):
                 path = path[len(base):]
-            if menu is None or path not in ("/api/login", "/api/logout", "/api/bridge", "/api/delete"):
+            if menu is None or path not in ("/api/login", "/api/logout", "/api/bridge", "/api/delete", "/api/picallow"):
                 return self._json(404, {"error": "not found"})
             if self.headers.get("X-Requested-With") != "ysfradio":
                 return self._json(403, {"error": "forbidden"})
@@ -1409,7 +1538,8 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 return self._json(200, {"ok": True}, self._cookie("", 0))
             if path == "/api/delete":
                 store = {"msg": getattr(args, "msgwriter", None),
-                         "news": getattr(args, "newswriter", None)}.get(obj.get("kind"))
+                         "news": getattr(args, "newswriter", None),
+                         "pic": getattr(args, "picreader", None)}.get(obj.get("kind"))
                 mid = obj.get("id")
                 if store is None:
                     return self._json(404, {"error": "not enabled"})
@@ -1420,6 +1550,24 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 except OSError:
                     return self._json(500, {"error": "cannot write"})
                 return self._json(200 if found else 404, {"ok": found})
+            if path == "/api/picallow":
+                al = getattr(args, "picallow", None)
+                if al is None:
+                    return self._json(404, {"error": "not enabled"})
+                op, call = obj.get("op"), obj.get("call", "")
+                rid = obj.get("id", "")
+                try:
+                    if op == "list":
+                        return self._json(200, {"allow": al.list()})
+                    if op not in ("add", "remove") or not isinstance(call, str) or not isinstance(rid, str):
+                        return self._json(400, {"error": "bad request"})
+                    call = call.upper()
+                    if not ysfmsgstore.CALL_RE.match(call) or not (rid == "" or ysfpic.RID_RE.match(rid)):
+                        return self._json(400, {"error": "bad callsign or radio ID"})
+                    ok = al.add(call, rid) if op == "add" else al.remove(call, rid)
+                except OSError:
+                    return self._json(500, {"error": "cannot write"})
+                return self._json(200 if ok else 404, {"ok": ok, "allow": al.list()})
             if menu.bridge is None:
                 return self._json(404, {"error": "bridge not configured"})
             action = obj.get("action")
@@ -1539,6 +1687,12 @@ def main():
                    help="show News Station uploads kept by ysfmsgd.py (MENU > LOG > NEWS)")
     p.add_argument("--news-file", default="",
                    help="news board file written by ysfmsgd.py (default: <state-dir>/newsboard.json)")
+    p.add_argument("--pictures", action="store_true",
+                   help="show pictures kept by ysfmsgd.py and manage the sender whitelist (MENU > LOG > PICTURES)")
+    p.add_argument("--pictures-dir", default="",
+                   help="picture folder written by ysfmsgd.py (default: <state-dir>/pictures)")
+    p.add_argument("--pictures-allow", default="",
+                   help="whitelist file (default: <state-dir>/picture-allow.json)")
     p.add_argument("--positions", action="store_true",
                    help="use positions the radios transmit, decoded by ysfmsgd.py, as well as APRS-IS")
     p.add_argument("--positions-file", default="",
@@ -1557,6 +1711,10 @@ def main():
         npath = args.news_file or os.path.join(args.state_dir, "newsboard.json")
         args.newsreader = ysfmsgstore.MsgReader(npath)
         args.newswriter = ysfmsgstore.MsgFile(npath)
+    args.picreader = args.picallow = None
+    if args.pictures or args.pictures_dir:
+        args.picreader = ysfpic.PicFile(args.pictures_dir or os.path.join(args.state_dir, "pictures"))
+        args.picallow = ysfpic.Allow(args.pictures_allow or os.path.join(args.state_dir, "picture-allow.json"))
     args.posreader = None
     if args.positions or args.positions_file:
         args.posreader = ysfmsgstore.PosReader(

@@ -35,6 +35,7 @@ import time
 
 import ysfdec as y
 import ysfmsgstore
+import ysfpic
 import ysfpos
 
 SO_ATTACH_FILTER = 26
@@ -99,8 +100,9 @@ def field(b):
 class Decoder(object):
     """Turns YSFD packets into stored messages."""
 
-    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3):
+    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None):
         self.store = store
+        self.pics = pics                    # ysfpic.PicRx or None
         self.pos = pos
         self.news = news
         self.news_last = {}
@@ -149,9 +151,9 @@ class Decoder(object):
         key = (gw, src)
         a = self.asm.get(key)
         if a is None or now - a["t"] > 3 or f["FI"] == 0:
-            a = self.asm[key] = {"t": now, "segs": {}}
+            a = self.asm[key] = {"t": now, "segs": {}, "frames": []}
         a["t"] = now
-        if f["FI"] == 1 and f["FN"] not in a["segs"]:
+        if f["FI"] == 1 and (f["FN"] not in a["segs"] or self.pics is not None):
             bits = y.bytes_to_bits(frame)[240:960]
             parts = []
             for lo in (0, 72):
@@ -162,9 +164,15 @@ class Decoder(object):
                 if not r["ok"]:
                     return None
                 parts.append(y.bits_to_bytes(r["data"]))
-            a["segs"][f["FN"]] = parts[0] + parts[1]
+            a["segs"].setdefault(f["FN"], parts[0] + parts[1])
+            if self.pics is not None:
+                a["frames"].append((ctr, f["FN"], f["FT"], parts[0] + parts[1]))
         if ctr & 1:                          # end flag: terminator frame
             del self.asm[key]
+            if self.pics is not None and a["frames"]:
+                pid = self.pics.stream_end(gw, src, a["frames"], now)
+                if pid is not None:
+                    return None
             return self.finish(src, a["segs"], now)
         self.gc(now)
         return None
@@ -274,6 +282,8 @@ class Decoder(object):
         if n < 3 or any(i not in segs for i in range(n)):
             return None
         rec = b"".join(segs[i] for i in range(n))
+        if ysfpic.PicRx.is_control(rec):
+            return None                      # picture transfer records, handled by ysfpic
         pr = y.parse_record(rec)
         if not pr or not pr["ok"]:
             return None
@@ -312,6 +322,12 @@ def main():
                     help="room ID the radios upload to (5 characters, the destination ID of the upload)")
     ap.add_argument("--board-per-hour", type=int, default=3, help="most uploads kept per callsign per hour")
     ap.add_argument("--board-days", type=int, default=30, help="drop uploads older than this")
+    ap.add_argument("--pictures-dir", default="",
+                    help="folder for pictures from camera microphones (empty = pictures are not kept)")
+    ap.add_argument("--pictures-allow", default="/var/lib/ysfradio/picture-allow.json",
+                    help="whitelist file; only these callsigns' pictures are kept (edited in the dashboard admin)")
+    ap.add_argument("--pictures-per-hour", type=int, default=5, help="most pictures kept per callsign per hour")
+    ap.add_argument("--pictures-days", type=int, default=7, help="drop pictures older than this")
     a = ap.parse_args()
     if not hasattr(socket, "AF_PACKET"):
         raise SystemExit("needs Linux")
@@ -323,8 +339,12 @@ def main():
     pos = ysfmsgstore.PosFile(a.positions_out, max(1, a.positions_days)) if a.positions_out else None
     news = ysfmsgstore.NewsQueue(a.news_out) if a.news_out else None
     board = ysfmsgstore.MsgFile(a.board_out, max(1, a.board_days)) if a.board_out and a.board_room_id else None
+    pics = None
+    if a.pictures_dir:
+        pics = ysfpic.PicRx(ysfpic.PicFile(a.pictures_dir, max(1, a.pictures_days)),
+                            ysfpic.Allow(a.pictures_allow), max(1, a.pictures_per_hour))
     dec = Decoder(ysfmsgstore.MsgFile(a.out, max(1, a.keep_days)), a.per_hour, pos, news,
-                  board, a.board_room_id, a.board_per_hour)
+                  board, a.board_room_id, a.board_per_hour, pics)
     signal.signal(signal.SIGTERM, lambda *x: sys.exit(0))
     sys.stderr.write("ysfmsgd: watching UDP %d, writing %s\n" % (a.port, a.out))
     sys.stderr.flush()
