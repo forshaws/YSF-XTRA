@@ -394,7 +394,8 @@ def main():
     pics = None
     if a.pictures_dir:
         pics = ysfpic.PicRx(ysfpic.PicFile(a.pictures_dir, max(1, a.pictures_days)),
-                            ysfpic.Allow(a.pictures_allow), max(1, a.pictures_per_hour))
+                            ysfpic.Allow(a.pictures_allow), max(1, a.pictures_per_hour),
+                            room=a.board_room_id)
     dec = Decoder(ysfmsgstore.MsgFile(a.out, max(1, a.keep_days)), a.per_hour, pos, news,
                   board, a.board_room_id, a.board_per_hour, pics,
                   Activity(a.activity_out) if a.activity_out else None)

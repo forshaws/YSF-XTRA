@@ -84,7 +84,9 @@ class PicFile(object):
                 if (isinstance(p["id"], int) and not isinstance(p["id"], bool) and
                         isinstance(p["t"], (int, float)) and CALL_RE.match(p["call"]) and
                         isinstance(p["ok"], bool) and isinstance(p["w"], int) and
-                        isinstance(p["h"], int) and isinstance(p["size"], int)):
+                        isinstance(p["h"], int) and isinstance(p["size"], int) and
+                        p.get("kind", "all") in ("all", "news")):
+                    p.setdefault("kind", "all")
                     pics.append(p)
             except (KeyError, TypeError):
                 pass
@@ -104,7 +106,7 @@ class PicFile(object):
             except OSError:
                 pass
 
-    def add(self, call, jpeg, ok, w, h, now=None):
+    def add(self, call, jpeg, ok, w, h, now=None, kind="all"):
         now = time.time() if now is None else now
         if not CALL_RE.match(call):
             return None
@@ -115,7 +117,7 @@ class PicFile(object):
             with os.fdopen(fd, "wb") as f:
                 f.write(jpeg)
             pics.append({"id": nxt, "t": round(now, 1), "call": call, "ok": bool(ok),
-                         "w": w, "h": h, "size": len(jpeg)})
+                         "w": w, "h": h, "size": len(jpeg), "kind": kind})
             keep = [p for p in pics if now - p["t"] <= self.keep][-self.max:]
             gone = set(p["id"] for p in pics) - set(p["id"] for p in keep)
             self._save(keep, nxt + 1, gone)
@@ -134,7 +136,14 @@ class PicFile(object):
         """Newest first, public fields only."""
         pics, _ = self._load()
         return [{"id": p["id"], "t": p["t"], "call": p["call"], "ok": p["ok"],
-                 "w": p["w"], "h": p["h"], "size": p["size"]} for p in pics][::-1]
+                 "w": p["w"], "h": p["h"], "size": p["size"], "kind": p["kind"]} for p in pics][::-1]
+
+    def latest_news(self):
+        """Newest picture uploaded to the News Station: {"id", "t", "call", "ok"} or None."""
+        for p in self.get():
+            if p["kind"] == "news":
+                return p
+        return None
 
     def read(self, pid):
         """JPEG bytes of a listed picture, else None."""
@@ -245,14 +254,16 @@ def _blocks(frames):
 class PicRx(object):
     """Collects the streams of one picture per sender and stores it when the end record arrives."""
 
-    def __init__(self, store, allow, per_hour=5, max_bytes=MAX_BYTES, log=None):
+    def __init__(self, store, allow, per_hour=5, max_bytes=MAX_BYTES, log=None, room=""):
         self.store = store
         self.allow = allow
+        self.room = room                                  # News Station room ID pictures are uploaded to
         self.per_hour = per_hour
         self.max_bytes = max_bytes
         self.sess = {}                                   # (gw, src) -> session
         self.sent = collections.defaultdict(collections.deque)
         self.warned = {}
+        self.ghmiss = {}                                  # (gw, src) -> (time, lost frames of the last info record)
         self.log = log or (lambda s: (sys.stderr.write(s + "\n"), sys.stderr.flush()))
 
     @staticmethod
@@ -290,11 +301,29 @@ class PicRx(object):
                     s = self.sess[key] = {"t": now, "chunks": {}, "ok": None, "rid": "", "hdrlost": 0, "streams": 0}
                 s["hdrlost"] += 1
             first = False
-            if tag == b"Nd_" and buf[83:84] == b"P" and not ({0, 1, 2} & set(miss)):
-                # description record: starts a new picture and gives its size in bytes
-                size = int.from_bytes(buf[88:92], "big")
+            if tag == b"Gh_" and not ({0, 1, 2, 3} & set(miss)):
+                # info record: starts a new picture and says where it is addressed
+                did, dcall = buf[113:118].decode("latin-1").strip(), buf[118:128].decode("latin-1").strip()
+                if dcall and set(dcall) == {"*"} and not did:
+                    dest = "all"
+                elif self.room and did == self.room:
+                    dest = "news"
+                else:
+                    dest = "direct"
                 s = self.sess[key] = {"t": now, "chunks": {}, "ok": None, "rid": "", "hdrlost": 0, "streams": 0,
-                                      "size": size if 0 < size <= self.max_bytes else 0}
+                                      "dest": dest, "gh": True}
+                continue
+            if tag == b"Gh_" and miss:
+                self.ghmiss[key] = (now, miss)
+                if len(self.ghmiss) > 64:
+                    self.ghmiss.clear()
+            if tag == b"Nd_" and buf[83:84] == b"P" and not ({0, 1, 2} & set(miss)):
+                # description record: gives the size in bytes; the destination comes from the info record before it
+                size = int.from_bytes(buf[88:92], "big")
+                old = s if (s is not None and s.get("gh") and not s["chunks"]) else None
+                s = self.sess[key] = {"t": now, "chunks": {}, "ok": None, "rid": "", "hdrlost": 0, "streams": 0,
+                                      "size": size if 0 < size <= self.max_bytes else 0,
+                                      "dest": old["dest"] if old else None}
                 continue
             if kind == b"3P" and tag in (b"Nb_", b"Ne_") and not ({0, 1} & set(miss)):
                 cnt = int.from_bytes(buf[66:68], "big")
@@ -305,10 +334,21 @@ class PicRx(object):
                     if s is None or (s["chunks"] and cnt <= min(s["chunks"])):
                         s = self.sess[key] = {"t": now, "chunks": {}, "ok": None, "rid": rid, "hdrlost": 0, "streams": 0}
                     if s["ok"] is None:
-                        s["ok"] = self.allow.allowed(src, rid)
-                        if not s["ok"] and now - self.warned.get(src, 0) > 300:
-                            self.warned[src] = now
-                            self.log("ysfmsgd: picture from %s (%s) ignored: not on the whitelist" % (src, rid))
+                        dest = s.get("dest")
+                        if dest not in ("all", "news"):                  # directed to a callsign, or destination not seen
+                            s["ok"] = False
+                            if now - self.warned.get(src, 0) > 300:
+                                self.warned[src] = now
+                                gm = self.ghmiss.get(key)
+                                self.log("ysfmsgd: picture from %s ignored: %s" % (
+                                    src, "not addressed to ALL or the News Station room" if dest == "direct" else
+                                    ("destination not seen (info record lost frames %s)" % gm[1]
+                                     if gm and now - gm[0] < 120 else "destination not seen (no info record received)")))
+                        else:
+                            s["ok"] = self.allow.allowed(src, rid)
+                            if not s["ok"] and now - self.warned.get(src, 0) > 300:
+                                self.warned[src] = now
+                                self.log("ysfmsgd: picture from %s (%s) ignored: not on the whitelist" % (src, rid))
                     length = int.from_bytes(buf[68:70], "big") or 1024
                     length = min(length, 1024)
                     cur = {"cnt": cnt, "len": length, "data": bytearray(buf[70:]), "lost": False}
@@ -371,9 +411,10 @@ class PicRx(object):
         if len(dq) >= self.per_hour:
             self.log("ysfmsgd: picture from %s over the hourly limit, not stored" % src)
             return None
-        pid = self.store.add(src, jpeg, ok, info[0], info[1], now)
+        pid = self.store.add(src, jpeg, ok, info[0], info[1], now, s.get("dest") or "all")
         if pid is not None:
             dq.append(now)
-            self.log("ysfmsgd: stored picture %d from %s (%dx%d, %d bytes%s)" %
-                     (pid, src, info[0], info[1], len(jpeg), "" if ok else ", DAMAGED"))
+            self.log("ysfmsgd: stored %spicture %d from %s (%dx%d, %d bytes%s)" %
+                     ("News Station " if s.get("dest") == "news" else "", pid, src, info[0], info[1], len(jpeg),
+                      "" if ok else ", DAMAGED"))
         return pid

@@ -186,7 +186,7 @@ sudo systemctl daemon-reload
 sudo systemctl restart ysfmsg ysfradio
 ```
 
-Add senders in the dashboard: MENU > PIC SENDERS (admin PIN), ADD SENDER with the callsign and, optionally, the radio ID. The list is stored in `/var/lib/ysfradio/picture-allow.json`. A callsign with no radio ID matches any radio. Pictures from other callsigns are ignored and logged once. Kept pictures: 20 at most, 7 days, 5 per callsign per hour, 64 KB each. A picture with a lost frame is kept and marked DAMAGED. An admin can delete a picture with DEL.
+Add senders in the dashboard: MENU > PIC SENDERS (admin PIN), ADD SENDER with the callsign and, optionally, the radio ID. The list is stored in `/var/lib/ysfradio/picture-allow.json`. A callsign with no radio ID matches any radio. Pictures from other callsigns are ignored and logged once. Kept pictures: 20 at most, 7 days, 5 per callsign per hour, 64 KB each. A picture with a lost frame is kept and marked DAMAGED. A picture is kept only when it is addressed to everyone (ALL) or uploaded to the News Station room (`--board-room-id` of `ysfmsgd`); a picture addressed to one callsign is ignored. A News Station upload is marked NEWS in the list. An admin can delete a picture with DEL.
 
 Radios cannot yet download pictures from the News Station; this is receive and display only.
 

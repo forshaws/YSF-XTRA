@@ -10,6 +10,7 @@ Observed on an FT5D with a camera microphone, through a Pi-Star hotspot to a pYS
 |---|---|---|---|
 | PIC1 | 160x120 | LOW | 2559 bytes, 3 chunks, rebuilt and verified |
 | PIC2 | 320x240 | HIGH | 18027 bytes, 18 chunks, rebuilt; 2 of 614 frames lost in transit, detected by the check sum |
+| PIC3 | 160x120 | LOW | sent with News Station > Upload > Picture: 2571 bytes, 3 chunks, rebuilt; addressed to the room (section 4) |
 
 Not captured: NORMAL quality, 160x120 HIGH, 320x240 LOW, FT3D, FTM400, a picture sent to a single callsign, and the reply to a picture download from the News Station. Size and quality only change the number of chunks in the captures made.
 
@@ -48,7 +49,19 @@ One picture is sent as this sequence of streams:
 | 3... | `Nb_` | Data chunks 1 to N. |
 | last | `Ne_` | End record. |
 
-Byte 60 of the first block differs by record: PIC1 `00 / 03 / 04 / 05` for `Gh_ / Nd_ / Nb_ / Ne_`, PIC2 `41 / 44 / 45 / 46`. The steps between records are the same; the base differs between transfers (0x00, 0x41).
+Byte 60 of the first block differs by record: PIC1 `00 / 03 / 04 / 05` for `Gh_ / Nd_ / Nb_ / Ne_`, PIC2 `41 / 44 / 45 / 46`, PIC3 `08 / 0B / 0C / 0D`. The steps between records are the same; the base differs between transfers (0x00, 0x41, 0x08).
+
+`Gh_` and `Nd_` carry `3U` at offsets 64-65 (`Nb_` and `Ne_` carry `3P`).
+
+`Gh_` fields (offsets in the first block):
+
+| Offset | Content |
+|---|---|
+| 113-117 | destination ID: blank for a picture to everyone, `14561` for a News Station upload |
+| 118-127 | destination callsign: `**********` for everyone, `GB-CCARC` (the room name) for a News Station upload |
+| 128-... | capture time text (`2026/11/01 09:02`), ETX, check byte |
+
+The `Nd_`, `Nb_` and `Ne_` records carry no destination, so the `Gh_` record is the only place it is stated. A picture upload from the News Station screen is otherwise the same sequence as a picture sent to everyone.
 
 `Nd_` fields (offsets in the first block):
 
@@ -97,5 +110,5 @@ The concatenated chunk data is a baseline JPEG: it starts `FF D8 FF E0` (JFIF) a
 - Meaning of byte 60 and of the second `Ne_` field (it matched 2 x (chunks - 1) in both captures).
 - What the `H` at `Nd_` offset 106 selects.
 - What a radio expects back after a News Station picture download. The request is the `]l_` command of `C4FM-TEXT-MESSAGE-FORMAT.md` 5.8 with `2` after the station ID (`3` `14561` `17989` `220`), from an FT5D; whether a directed picture transfer ends the radio's wait is not tested.
-- Behaviour for pictures sent to a single callsign or to a room.
+- Behaviour for pictures sent to a single callsign.
 - Whether the FT3D and FTM400 send the same records.

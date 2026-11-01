@@ -670,6 +670,7 @@ JS = r"""
       var c = document.createElement('span'); c.textContent = m.call; h.appendChild(c);
       if (m.id > msgNewFrom) { var nw = document.createElement('span'); nw.className = 'mnew'; nw.textContent = 'NEW'; h.appendChild(nw); }
       var t = document.createElement('span'); t.className = 'mrt'; t.textContent = msgTime(m.t); h.appendChild(t);
+      if (logKind === 'pic' && m.kind === 'news') { var kn = document.createElement('span'); kn.className = 'mnew'; kn.textContent = 'NEWS'; h.insertBefore(kn, t); }
       if (logKind === 'pic' && !m.ok) { var dm = document.createElement('span'); dm.className = 'mnew'; dm.textContent = 'DAMAGED'; h.insertBefore(dm, t); }
       var x = document.createElement('div'); x.className = 'mx';
       x.textContent = logKind === 'pic' ? m.w + 'x' + m.h + '  ' + (m.size / 1024).toFixed(1) + 'KB' : m.text;
