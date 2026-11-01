@@ -1,11 +1,11 @@
 [Unit]
-Description=YSF reflector News Station responder (text messages)
+Description=YSF reflector News Station responder (text messages and pictures)
 After=network.target ysfmsg.service
 
 [Service]
 User=ysfdash
 Group=ysfdash
-ExecStart=/usr/bin/python3 /opt/ysfdash/ysfnews.py --template /var/lib/ysfradio/news-template.jsonl --call N0CALL --radio-id 00000
+ExecStart=/usr/bin/python3 /opt/ysfdash/ysfnews.py --template /var/lib/ysfradio/news-template.jsonl --call N0CALL --radio-id 00000 --pic-queue /var/lib/ysfradio/picreq.json --lat 0.0 --lon 0.0
 Restart=on-failure
 CapabilityBoundingSet=
 NoNewPrivileges=true

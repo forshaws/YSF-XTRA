@@ -29,6 +29,29 @@ Messages dropped without a log line: over the hourly limit, duplicate (same send
 | Wait before replying | 1.5 s | `--delay` |
 | Gap between messages | 4 s | `--gap` |
 
+## Pictures (`ysfmsgd`, `ysfradio`)
+
+| Limit | Default | Option |
+|---|---|---|
+| Kept per callsign per hour | 5 | `--pictures-per-hour` |
+| Retention | 7 days | `--pictures-days` |
+| Pictures kept | newest 20 | fixed (`MAX_PICS`, `ysfpic.py`) |
+| Size of one picture | 64 KB | fixed (`MAX_BYTES`) |
+| Picture size in pixels | 640x480 at most | fixed (`MAX_DIM`) |
+| Time allowed between the streams of one picture | 120 s | fixed (`SESSION_GAP`) |
+| Whitelist entries | 200 | fixed |
+
+Pictures from callsigns (and radio IDs, when the entry has one) not on the whitelist are ignored and logged once per 5 minutes. A picture addressed to a callsign is ignored; only pictures to ALL or to the News Station room are kept.
+
+## News Station picture replies (`ysfnews`)
+
+| Limit | Default | Option |
+|---|---|---|
+| Picture requests answered per hour, all radios | 10 | `--pic-per-hour` |
+| Same radio asking again | 120 s | `--cooldown` |
+| Wait before replying | 1.5 s | `--delay` |
+| Gap between the streams of the picture | 0.6 s | fixed |
+| Time on air | about 13 s for a 160x120 LOW picture | fixed (100 ms per frame) |
 ## Dashboard (`ysfradio`, `ysfdash`)
 
 | Setting | Default | Option |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ysfnews: answer News Station downloads on the reflector with text messages.
+"""ysfnews: answer News Station downloads on the reflector with text messages and pictures.
 
 When a radio asks the reflector for a News Station "download - message", ysfmsgd.py
 queues the requester's callsign and radio ID (--news-out). This service reads the
@@ -16,6 +16,11 @@ Check that automatic messages are allowed under your licence terms.
 Uploads from radios (ysfmsgd --board-out) are appended after the news file, newest last,
 as "CALL dd/mm: text".
 
+A News Station "download - picture" (ysfmsgd --picreq-out, --pic-queue here) is answered with
+the newest picture a radio uploaded to the News Station (ysfmsgd --pictures-dir, --pictures-dir
+here), sent as a directed picture transfer (ysfpicsend.py). With no picture yet, the radio gets
+one short text message. Needs --lat and --lon: the position the picture is sent from.
+
 news file: one message per line, at most 80 printable ASCII characters; blank lines and
 lines starting with # are ignored. {call} is replaced by the requester's callsign.
 The file is read on every request, so edits take effect at once.
@@ -29,6 +34,8 @@ import sys
 import time
 
 import ysfmsgstore
+import ysfpic
+import ysfpicsend as P
 import ysfsend as S
 
 
@@ -87,9 +94,22 @@ class Sender(object):
         frames = S.build_frames(rec, self.tpl["fich"])
         return [S.packet(self.gw, self.call, self.dst, k, frames[k]) for k in range(S.NFRAMES)]
 
+    def pic_packets(self, jpeg, when, to_call, to_id, lat, lon):
+        """The packets of a picture sent to one radio, one list per stream."""
+        seq = S.next_seq(self.seq_file)
+        streams = P.build_picture(jpeg, self.call, self.rid, seq, when, lat, lon, to_id=to_id, to_call=to_call,
+                                  name_no=seq % 1000000, base=seq & 0x3F)
+        return [P.packets(self.gw, self.call, self.dst, P.stream_frames(b)) for b in streams]
+
     def send(self, texts, to_call, to_id):
         """Log in, send every text, log out. Returns the number sent."""
-        pkts = [self.packets(t, to_call, to_id) for t in texts]
+        return self._deliver([self.packets(t, to_call, to_id) for t in texts], self.gap)
+
+    def send_picture(self, jpeg, when, to_call, to_id, lat, lon, gap=0.6):
+        """Log in, send one picture, log out. Returns the number of streams sent."""
+        return self._deliver(self.pic_packets(jpeg, when, to_call, to_id, lat, lon), gap)
+
+    def _deliver(self, pkts, gap):
         poll = b"YSFP" + self.call.ljust(10)[:10].encode("ascii")
         bye = b"YSFU" + self.call.ljust(10)[:10].encode("ascii")
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -111,7 +131,7 @@ class Sender(object):
                     s.sendto(p, self.addr)
                     time.sleep(0.1)
                 sent += 1
-                time.sleep(self.gap)
+                time.sleep(gap)
             s.sendto(bye, self.addr)
             return sent
         finally:
@@ -137,6 +157,12 @@ def main():
     ap.add_argument("--max-lines", type=int, default=5, help="most messages per request")
     ap.add_argument("--delay", type=float, default=1.5, help="seconds to wait after a request before replying")
     ap.add_argument("--gap", type=float, default=4.0, help="seconds between messages (a radio drops texts sent closer together)")
+    ap.add_argument("--pic-queue", default="",
+                    help="picture download queue written by ysfmsgd --picreq-out (empty = pictures are not served)")
+    ap.add_argument("--pictures-dir", default="/var/lib/ysfradio/pictures", help="picture folder written by ysfmsgd")
+    ap.add_argument("--lat", type=float, default=None, help="latitude pictures are sent from (needed with --pic-queue)")
+    ap.add_argument("--lon", type=float, default=None, help="longitude pictures are sent from (needed with --pic-queue)")
+    ap.add_argument("--pic-per-hour", type=int, default=10, help="most picture requests answered per hour, all radios")
     ap.add_argument("--dry-run", action="store_true", help="log what would be sent, send nothing")
     a = ap.parse_args()
 
@@ -149,6 +175,9 @@ def main():
     if not tpl:
         raise SystemExit("no 7-frame transmission found in %s" % a.template)
     sender = Sender(tpl, call, a.radio_id, a.host, a.port, a.seq_file, a.gap)
+    if a.pic_queue and (a.lat is None or a.lon is None):
+        raise SystemExit("--pic-queue needs --lat and --lon (the position pictures are sent from)")
+    pics = ysfpic.PicFile(a.pictures_dir) if a.pic_queue else None
 
     if not os.path.exists(a.seq_file):
         with open(a.seq_file, "w") as f:
@@ -158,7 +187,13 @@ def main():
     seen = {}                                            # radio ID -> time answered
     hour = collections.deque()
     sig = None
+    preqs, _ = ysfmsgstore.NewsQueue.load(a.pic_queue) if a.pic_queue else ([], 1)
+    last_pid = max([r["id"] for r in preqs] or [0])
+    psig = None
+    phour = collections.deque()
     log("watching %s, news file %s, sending as %s %s" % (a.queue, a.news, call, a.radio_id))
+    if a.pic_queue:
+        log("answering picture downloads from %s with the newest News Station picture" % a.pictures_dir)
     while True:
         try:
             st = os.stat(a.queue)
@@ -194,7 +229,50 @@ def main():
                     continue
                 n = sender.send(texts, r["call"], r["rid"])
                 log("sent %d of %d message(s) to %s %s" % (n, len(texts), r["call"], r["rid"]))
+        if a.pic_queue:
+            try:
+                st = os.stat(a.pic_queue)
+                pcur = (st.st_mtime, st.st_size)
+            except OSError:
+                pcur = None
+            if pcur != psig:
+                psig = pcur
+                for r in ysfmsgstore.NewsQueue.read_after(a.pic_queue, last_pid):
+                    last_pid = r["id"]
+                    now = time.time()
+                    if now - r["t"] > 30:
+                        continue
+                    while phour and now - phour[0] > 3600:
+                        phour.popleft()
+                    if len(phour) >= a.pic_per_hour:
+                        log("picture hourly limit reached, ignoring request from %s" % r["call"])
+                        continue
+                    if now - seen.get(("pic", r["rid"]), 0) < a.cooldown:
+                        log("%s asked for a picture again within %d s, ignored" % (r["call"], a.cooldown))
+                        continue
+                    seen[("pic", r["rid"])] = now
+                    phour.append(now)
+                    answer_picture(a, sender, pics, r)
         time.sleep(0.5)
+
+
+def answer_picture(a, sender, pics, r):
+    p = pics.latest_news()
+    jpeg = pics.read(p["id"]) if p else None
+    time.sleep(max(0.0, a.delay))
+    if not jpeg:
+        texts = ["NO NEWS PICTURE YET"]
+        if a.dry_run:
+            log("dry run: no News Station picture, would send %r to %s %s" % (texts, r["call"], r["rid"]))
+            return
+        n = sender.send(texts, r["call"], r["rid"])
+        log("no News Station picture yet, sent %d text message to %s %s" % (n, r["call"], r["rid"]))
+        return
+    if a.dry_run:
+        log("dry run: would send picture %d (%d bytes, from %s) to %s %s" % (p["id"], len(jpeg), p["call"], r["call"], r["rid"]))
+        return
+    n = sender.send_picture(jpeg, p["t"], r["call"], r["rid"], a.lat, a.lon)
+    log("sent picture %d (%d bytes, %d streams) to %s %s" % (p["id"], len(jpeg), n, r["call"], r["rid"]))
 
 
 if __name__ == "__main__":

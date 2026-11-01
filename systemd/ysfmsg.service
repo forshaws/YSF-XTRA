@@ -5,7 +5,7 @@ After=network.target
 [Service]
 User=ysfdash
 Group=ysfdash
-ExecStart=/usr/bin/python3 /opt/ysfdash/ysfmsgd.py --port 42002 --out /var/lib/ysfradio/messages.json --news-out /var/lib/ysfradio/newsreq.json --board-out /var/lib/ysfradio/newsboard.json --board-room-id 00000
+ExecStart=/usr/bin/python3 /opt/ysfdash/ysfmsgd.py --port 42002 --out /var/lib/ysfradio/messages.json --news-out /var/lib/ysfradio/newsreq.json --board-out /var/lib/ysfradio/newsboard.json --board-room-id 00000 --pictures-dir /var/lib/ysfradio/pictures --picreq-out /var/lib/ysfradio/picreq.json
 Restart=on-failure
 AmbientCapabilities=CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_RAW

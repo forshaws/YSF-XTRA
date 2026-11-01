@@ -1,20 +1,21 @@
 # News Station responder (ysfnews)
 
-Answers a radio's WIRES-X News Station "download, message" request with text messages from a news file. The radio jumps to its message log and shows them.
+Answers a radio's WIRES-X News Station "download, message" request with text messages from a news file, and "download, picture" with the newest picture uploaded to the News Station. The radio jumps to its message log and shows the messages.
 
 How it works:
 - `ysfmsgd.py` (with `--news-out`) recognises the download request and queues only the requester's callsign and radio ID in `/var/lib/ysfradio/newsreq.json`.
 - `ysfnews.py` reads the queue and sends each line of `news.txt` to that callsign and radio ID as a directed text message, under the callsign and radio ID you give it (`--call`, `--radio-id`). Use your own or your club's, and check that automatic messages are allowed under your licence terms.
 - A radio's News Station upload (a text message addressed to the room ID) is kept as a public news item: callsign, time and text. The next radios that download get the latest items after the lines of `news.txt`, as `CALL dd/mm: text`.
 - Other directed messages are discarded unread and never shown on the dashboard.
-- Voice and picture downloads are not answered.
+- A "download, picture" request is queued separately (`ysfmsgd --picreq-out`, `/var/lib/ysfradio/picreq.json`). `ysfnews.py --pic-queue` sends the newest picture a whitelisted radio uploaded to the News Station (see README section 7) to the requester, as a directed picture transfer built by `ysfpicsend.py`, under the same callsign and radio ID as the messages. With no picture yet, the radio gets the text `NO NEWS PICTURE YET`. This reply is experimental: it is built to match captures of an FT5D sending pictures, and the radio's acceptance of it as the answer to a download is being tested.
+- Voice downloads are not answered.
 
 ## Install (on the reflector host)
 
 From the repository folder:
 
 ```
-sudo cp src/ysfdec.py src/ysfpos.py src/ysfsend.py src/ysfmsgstore.py src/ysfmsgd.py src/ysfnews.py src/ysfboard.py /opt/ysfdash/
+sudo cp src/ysfdec.py src/ysfpos.py src/ysfsend.py src/ysfmsgstore.py src/ysfpic.py src/ysfpicsend.py src/ysfmsgd.py src/ysfnews.py src/ysfboard.py /opt/ysfdash/
 sudo cp examples/news.txt /var/lib/ysfradio/news.txt
 sudo cp cap_HELLO.jsonl /var/lib/ysfradio/news-template.jsonl
 sudo chown ysfdash:ysfdash /var/lib/ysfradio/news.txt /var/lib/ysfradio/news-template.jsonl
@@ -67,9 +68,13 @@ Changes apply to the next download, with no restart. Install: `sudo cp ysfboard.
 | `--delay S`, `--gap S` | 1.5, 4.0 | wait before replying, wait between messages (an FT5D dropped messages sent 1 s apart) |
 | `--board FILE` | `/var/lib/ysfradio/newsboard.json` | uploads written by ysfmsgd (missing = none) |
 | `--board-lines N` | 5 | most uploads sent per request (0 = none) |
+| `--pic-queue FILE` | off | picture download queue written by `ysfmsgd --picreq-out`; turns on picture replies (needs `--lat` and `--lon`) |
+| `--pictures-dir DIR` | `/var/lib/ysfradio/pictures` | picture folder written by `ysfmsgd` |
+| `--lat`, `--lon` | none | position the picture is sent from (your node's, in decimal degrees) |
+| `--pic-per-hour N` | 10 | most picture requests answered per hour, all radios |
 | `--dry-run` | off | log what would be sent, send nothing |
 
-Options (ysfmsgd.py): `--board-out FILE`, `--board-room-id ID`, `--board-per-hour N` (default 3 per callsign), `--board-days N` (default 30). At most 20 items are kept.
+Options (ysfmsgd.py): `--picreq-out FILE` (queue for picture downloads), `--board-out FILE`, `--board-room-id ID`, `--board-per-hour N` (default 3 per callsign), `--board-days N` (default 30). At most 20 items are kept.
 
 ## Check it
 

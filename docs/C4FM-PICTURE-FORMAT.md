@@ -51,7 +51,7 @@ One picture is sent as this sequence of streams:
 
 Byte 60 of the first block differs by record: PIC1 `00 / 03 / 04 / 05` for `Gh_ / Nd_ / Nb_ / Ne_`, PIC2 `41 / 44 / 45 / 46`, PIC3 `08 / 0B / 0C / 0D`. The steps between records are the same; the base differs between transfers (0x00, 0x41, 0x08).
 
-`Gh_` and `Nd_` carry `3U` at offsets 64-65 (`Nb_` and `Ne_` carry `3P`).
+`Gh_` and `Nd_` carry the sender's position from offset 64: a 19-byte block as in text messages (`C4FM-TEXT-MESSAGE-FORMAT.md`), starting with `3`. The radio reads its GPS again for each record, so the speed, course and last digits can differ between `Gh_` and `Nd_`. `Nd_` carries a second position block at offset 122 (18 bytes, without the leading `3`, symbol `YY`, no altitude, speed and course zero). `Nb_` and `Ne_` carry `3P` at offsets 64-65.
 
 `Gh_` fields (offsets in the first block):
 
@@ -103,7 +103,7 @@ The concatenated chunk data is a baseline JPEG: it starts `FF D8 FF E0` (JFIF) a
 4. A missing frame inside a chunk leaves 40 bytes unknown. The sum then differs from the end record. The picture can still be shown with a glitch band; mark it damaged.
 5. A missing `Ne_`, or a chunk lost entirely, leaves no complete picture.
 
-`src/ysfpic.py` implements this; `src/ysfmsgd.py` feeds it.
+`src/ysfpic.py` implements this; `src/ysfmsgd.py` feeds it. `src/ysfpicsend.py` builds the same streams for sending, and `python3 src/ysfpicsend.py --check CAPTURE` rebuilds a capture byte for byte (all records and frames of the PIC1, PIC2 and PIC3 captures match, apart from streams that lost a frame in the capture).
 
 ## 9. Unknown
 

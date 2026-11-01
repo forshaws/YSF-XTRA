@@ -188,7 +188,7 @@ sudo systemctl restart ysfmsg ysfradio
 
 Add senders in the dashboard: MENU > PIC SENDERS (admin PIN), ADD SENDER with the callsign and, optionally, the radio ID. The list is stored in `/var/lib/ysfradio/picture-allow.json`. A callsign with no radio ID matches any radio. Pictures from other callsigns are ignored and logged once. Kept pictures: 20 at most, 7 days, 5 per callsign per hour, 64 KB each. A picture with a lost frame is kept and marked DAMAGED. A picture is kept only when it is addressed to everyone (ALL) or uploaded to the News Station room (`--board-room-id` of `ysfmsgd`); a picture addressed to one callsign is ignored. A News Station upload is marked NEWS in the list. An admin can delete a picture with DEL.
 
-Radios cannot yet download pictures from the News Station; this is receive and display only.
+A radio's News Station "download, picture" can be answered with the newest picture uploaded to the News Station (experimental): add `--picreq-out /var/lib/ysfradio/picreq.json` to `ysfmsg.service` and `--pic-queue /var/lib/ysfradio/picreq.json --lat LAT --lon LON` to `ysfnews.service` (your node's position), and copy `ysfpic.py` and `ysfpicsend.py` to `/opt/ysfdash/`. See `docs/README-news.md`.
 
 While a picture or text message is being received, the dashboard shows DATA on the lamp, PICTURE DATA (or MESSAGE DATA) on the blue bar and PICTURE TO (or MESSAGE TO) on the route line, then returns to DIGITAL VOICE. `ysfmsgd.py` writes `/var/lib/ysfradio/activity.json` for this (`--activity-out`, empty = off); the dashboard ignores it when older than 6 seconds.
 

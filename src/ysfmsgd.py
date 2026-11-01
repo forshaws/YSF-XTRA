@@ -136,10 +136,11 @@ def field(b):
 class Decoder(object):
     """Turns YSFD packets into stored messages."""
 
-    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None, act=None):
+    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None, act=None, picreq=None):
         self.store = store
         self.pics = pics                    # ysfpic.PicRx or None
         self.act = act                      # Activity or None
+        self.picreq = picreq                # NewsQueue for News Station picture downloads, or None
         self.pos = pos
         self.news = news
         self.news_last = {}
@@ -277,7 +278,7 @@ class Decoder(object):
         """A WIRES-X News Station download (message) request: command ']l_', payload '3' (FT5D) or '0' (FT3D)
         + room ID + station ID + '120' ..., ETX, checksum. Only the requester's callsign
         and radio ID are queued."""
-        if self.news is None or rec[61:64] != b"]l_" or not rec[65:75].isdigit():
+        if (self.news is None and self.picreq is None) or rec[61:64] != b"]l_" or not rec[65:75].isdigit():
             return
         etx = rec.find(b"\x03", 64)
         if etx < 0 or etx + 1 >= len(rec) or rec[etx + 1] not in (sum(rec[22:etx]) & 0xFF, sum(rec[13:etx]) & 0xFF):
@@ -286,21 +287,25 @@ class Decoder(object):
             sys.stderr.write("ysfmsgd: news request type %r not answered\n" % rec[64:65].decode("latin-1"))
             sys.stderr.flush()
             return
-        if rec[75:76] in (b"2", b"3"):                  # 1 = message; 2 = picture, 3 = voice are not served yet
-            sys.stderr.write("ysfmsgd: news download of type %r (2 picture, 3 voice) not answered\n" % rec[75:76].decode("latin-1"))
-            sys.stderr.flush()
+        kind = rec[75:76]                                # 1 message, 2 picture, 3 voice (not served)
+        queue = self.picreq if kind == b"2" else (None if kind == b"3" else self.news)
+        if queue is None:
+            if kind in (b"2", b"3"):
+                sys.stderr.write("ysfmsgd: news download of type %r (1 message, 2 picture, 3 voice) not answered\n" %
+                                 kind.decode("latin-1"))
+                sys.stderr.flush()
             return
         if rec[5:10] != rec[55:60]:
             return
         rid, call = field(rec[5:10]), field(rec[10:20])
-        if now - self.news_last.get(rid, 0) < 5:
+        if now - self.news_last.get((rid, kind), 0) < 5:
             return
         if len(self.news_last) > 256:
             self.news_last.clear()
-        self.news_last[rid] = now
-        if self.news.add(call, rid, now) is not None:
-            sys.stderr.write("ysfmsgd: news request from %s (payload %r)\n" %
-                             (call, rec[64:etx].decode("latin-1")))
+        self.news_last[(rid, kind)] = now
+        if queue.add(call, rid, now) is not None:
+            sys.stderr.write("ysfmsgd: %s request from %s (payload %r)\n" %
+                             ("picture" if kind == b"2" else "news", call, rec[64:etx].decode("latin-1")))
             sys.stderr.flush()
 
     def upload(self, src, pr, rec, now):
@@ -372,6 +377,8 @@ def main():
                     help="room ID the radios upload to (5 characters, the destination ID of the upload)")
     ap.add_argument("--board-per-hour", type=int, default=3, help="most uploads kept per callsign per hour")
     ap.add_argument("--board-days", type=int, default=30, help="drop uploads older than this")
+    ap.add_argument("--picreq-out", default="",
+                    help="queue file for News Station picture downloads, read by ysfnews.py (empty = not answered)")
     ap.add_argument("--pictures-dir", default="",
                     help="folder for pictures from camera microphones (empty = pictures are not kept)")
     ap.add_argument("--pictures-allow", default="/var/lib/ysfradio/picture-allow.json",
@@ -390,6 +397,7 @@ def main():
     attach_filter(s, a.port)
     pos = ysfmsgstore.PosFile(a.positions_out, max(1, a.positions_days)) if a.positions_out else None
     news = ysfmsgstore.NewsQueue(a.news_out) if a.news_out else None
+    picreq = ysfmsgstore.NewsQueue(a.picreq_out) if a.picreq_out else None
     board = ysfmsgstore.MsgFile(a.board_out, max(1, a.board_days)) if a.board_out and a.board_room_id else None
     pics = None
     if a.pictures_dir:
@@ -398,7 +406,7 @@ def main():
                             room=a.board_room_id)
     dec = Decoder(ysfmsgstore.MsgFile(a.out, max(1, a.keep_days)), a.per_hour, pos, news,
                   board, a.board_room_id, a.board_per_hour, pics,
-                  Activity(a.activity_out) if a.activity_out else None)
+                  Activity(a.activity_out) if a.activity_out else None, picreq)
     signal.signal(signal.SIGTERM, lambda *x: sys.exit(0))
     sys.stderr.write("ysfmsgd: watching UDP %d, writing %s\n" % (a.port, a.out))
     sys.stderr.flush()
