@@ -152,6 +152,7 @@ class Decoder(object):
         self.fich_cache = {}
         self.vseg = {}                      # (gw, src) -> FN6 bytes waiting for FN7
         self.vlog = {}
+        self.dlog = {}                      # (callsign, reason) -> time last logged
         self.sent = collections.defaultdict(collections.deque)
         self.per_hour = per_hour
 
@@ -220,7 +221,7 @@ class Decoder(object):
                 pid = self.pics.stream_end(gw, src, a["frames"], now)
                 if pid is not None:
                     return None
-            return self.finish(src, a["segs"], now)
+            return self.finish(src, a["segs"], now, a.get("kind") != "pic")
         self.gc(now)
         return None
 
@@ -329,34 +330,62 @@ class Decoder(object):
         for k in [k for k, a in self.asm.items() if now - a["t"] > 5]:
             del self.asm[k]
 
-    def finish(self, src, segs, now):
+    def drop(self, src, why, now):
+        """One log line (callsign and reason only, never the text) for a message that was not stored."""
+        k = (src, why[:12])
+        if now - self.dlog.get(k, 0) < 10:
+            return
+        if len(self.dlog) > 256:
+            self.dlog.clear()
+        self.dlog[k] = now
+        sys.stderr.write("ysfmsgd: message from %s not stored: %s\n" % (src, why))
+        sys.stderr.flush()
+
+    def finish(self, src, segs, now, log=True):
         n = max(segs) + 1 if segs else 0
         if n in (2, 3) and all(i in segs for i in range(n)):     # control records, not text
             self.news_request(src, b"".join(segs[i] for i in range(n)), now)
             return None
-        if n < 3 or any(i not in segs for i in range(n)):
+        if n < 3:
+            return None
+        gone = [i for i in range(n) if i not in segs]
+        if gone:
+            if log:
+                self.drop(src, "frames lost on the way %s of %d" % (gone, n), now)
             return None
         rec = b"".join(segs[i] for i in range(n))
         if ysfpic.PicRx.is_control(rec):
             return None                      # picture transfer records, handled by ysfpic
         pr = y.parse_record(rec)
-        if not pr or not pr["ok"]:
+        if not pr:
+            if log:
+                self.drop(src, "record layout not recognised (%d bytes, tag %r)" % (len(rec), rec[61:64].decode("latin-1")), now)
+            return None
+        if not pr["ok"]:
+            if log:
+                self.drop(src, "checksum does not match", now)
             return None
         self.position(src, rec, now)
         if self.board is not None and self.board_room and pr["to_id"] == self.board_room:
             return self.upload(src, pr, rec, now)
         if pr["to_call"] != ALL or pr["to_id"]:
+            if log:
+                self.drop(src, "addressed to a callsign or radio ID, not to everyone", now)
             return None                       # directed message: never stored
         dq = self.sent[src]
         while dq and now - dq[0] > 3600:
             dq.popleft()
         if len(dq) >= self.per_hour:
+            if log:
+                self.drop(src, "over the hourly limit", now)
             return None
         o = 18 if rec[61:63] == b"Gf" else 0         # a GPS block moves the fields after it
         k = "%s|%s|%s" % (src, rec[65 + o:70 + o].decode("latin-1"), rec[71 + o:81 + o].decode("latin-1"))
         mid = self.store.add(src, pr["text"], k, now)
         if mid is not None:
             dq.append(now)
+        elif log:
+            self.drop(src, "duplicate (same sequence number and time) or empty text", now)
         return mid
 
 

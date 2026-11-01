@@ -16,7 +16,7 @@ Options are set on the service command line (`sudo systemctl edit --full <servic
 | News request queue | 50 | fixed (`NEWS_MAX`) |
 | Repeat News request from the same radio | ignored within 5 s | fixed |
 
-Messages dropped without a log line: over the hourly limit, duplicate (same sender, sequence and stamp), addressed to a specific callsign, bad checksum. The checksum is the sum of bytes 60 up to and including the ETX.
+A text message that is not stored is logged by `ysfmsgd` as `message from CALL not stored: REASON` (callsign and reason only, never the text), at most once per 10 s per callsign and reason. Reasons: frames lost on the way, record layout not recognised, checksum does not match, addressed to a callsign or radio ID, over the hourly limit, duplicate (same sender, sequence and stamp) or empty text. The checksum is the sum of bytes 60 up to and including the ETX.
 
 ## News Station replies (`ysfnews`)
 
