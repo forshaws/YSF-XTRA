@@ -208,34 +208,33 @@ Only for a reflector bridged to DMR with MMDVM_Bridge. See `docs/README-menu.md`
 
 `src/ysfsend.py` sends one text message to the reflector, as a client logged in under your own callsign and radio ID. Replace `N0CALL` and `12345` with yours. Run it from the `src/` folder; it needs `ysfdec.py` beside it.
 
-1. Capture a template from your radio (skip this if you already did step 6.1). Send a short text with the radio's GPS position off, then press Ctrl+C:
+1. Dry run: builds the frames, writes them to a file and decodes them back, sending nothing.
 
    ```
-   sudo python3 ysfcap.py --call N0CALL --label HELLO --out cap_HELLO.jsonl
-   python3 ysfsend.py --check cap_HELLO.jsonl
+   python3 ysfsend.py --text "CQ TEST" --call N0CALL --radio-id 12345 --dry out.jsonl
    ```
 
-   The check prints `ALL 7 MATCH the capture byte for byte`.
-
-2. Dry run: builds the frames, writes them to a file and decodes them back, sending nothing.
+2. Send to everyone on the reflector. On the reflector's own machine use `--host 127.0.0.1`.
 
    ```
-   python3 ysfsend.py --template cap_HELLO.jsonl --text "CQ TEST" --dry out.jsonl
+   python3 ysfsend.py --text "CQ TEST" --live --host 127.0.0.1 --port 42002 --call N0CALL --radio-id 12345
    ```
 
-3. Send to everyone on the reflector. On the reflector's own machine use `--host 127.0.0.1`.
+3. Send to one radio with `--to-call` and `--to-id`:
 
    ```
-   python3 ysfsend.py --template cap_HELLO.jsonl --text "CQ TEST" --live --host 127.0.0.1 --port 42002 --call N0CALL --radio-id 12345
+   python3 ysfsend.py --text "HELLO" --live --host 127.0.0.1 --call N0CALL --radio-id 12345 --to-call M0RWV --to-id EB4XU
    ```
 
-4. Send to one radio with `--to-call` and `--to-id`:
+The text is 1 to 80 printable ASCII characters. Each run sends one message, and only with `--live`. Without `--template` the frame header bits (FICH) are the values an FT5D and an FT3D send in data frames; an FTM-400 sends CM 0. To copy the gateway name, destination and header bits of your own radio instead, capture one message from it (GPS position off) and add `--template`:
 
-   ```
-   python3 ysfsend.py --template cap_HELLO.jsonl --text "HELLO" --live --host 127.0.0.1 --call N0CALL --radio-id 12345 --to-call M0RWV --to-id EB4XU
-   ```
+```
+sudo python3 ysfcap.py --call N0CALL --label HELLO --out cap_HELLO.jsonl
+python3 ysfsend.py --check cap_HELLO.jsonl
+python3 ysfsend.py --template cap_HELLO.jsonl --text "CQ TEST" --live --host 127.0.0.1 --call N0CALL --radio-id 12345
+```
 
-The text is 1 to 80 printable ASCII characters. `--template` supplies the gateway name and frame header bits of a real message from your radio; without it they are guessed and a radio may not accept the message. Each run sends one message, and only with `--live`. Use your own callsign and radio ID and check that your licence permits automatic or scripted messages.
+The check prints `ALL 7 MATCH the capture byte for byte`. Use your own callsign and radio ID and check that your licence permits automatic or scripted messages.
 
 `src/ysfboard.py` adds, edits and deletes News Station board items directly, which radios receive when they download (`docs/README-news.md`):
 

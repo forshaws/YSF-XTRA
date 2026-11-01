@@ -18,7 +18,7 @@ Steps (nothing is transmitted until you add --live):
 
 --template supplies the gateway name, destination and FICH bits copied from a
 real transmission by your radio (a GPS-off message, 7 frames). Without it the
-FICH is guessed and may not be accepted by a radio.
+FICH uses the values seen from an FT5D and an FT3D (an FTM-400 sends CM 0).
 """
 
 import argparse
@@ -71,8 +71,8 @@ def place_units(head20, tail20):
 
 
 def guess_fich(fi, fn):
-    """Guessed FICH (used only without --template)."""
-    vals = {"FI": fi, "CS": 0, "CM": 0, "BN": 0, "BT": 0, "FN": fn, "FT": 4, "Rev": 0,
+    """Default FICH (used without --template): the values an FT5D and an FT3D send in data frames."""
+    vals = {"FI": fi, "CS": 2, "CM": 1, "BN": 0, "BT": 0, "FN": fn, "FT": 4, "Rev": 0,
             "Dev": 0, "MR": 0, "VoIP": 0, "DT": 1, "SQL": 0, "SC": 0}
     bits = []
     for name, n in y.FICH_FIELDS:
@@ -226,7 +226,7 @@ def main():
     frames = build_frames(rec, tpl["fich"] if tpl else None)
     pkts = [packet(gw, call, dst, k, frames[k]) for k in range(NFRAMES)]
     if not tpl:
-        print("WARNING: no --template, FICH bits are guessed")
+        print("note: no --template, using the FICH bits seen from an FT5D and an FT3D")
 
     # decode our own frames back as a sanity check
     back = b""
