@@ -249,7 +249,7 @@ class Decoder(object):
             return None
         del self.vseg[key]
         b = v["fn6"] + y.bits_to_bytes(r["data"])
-        if len(b) != 20 or b[4] != 0x33 or b[18] != 0x03 or (sum(b[:19]) & 0xFF) != b[19]:
+        if len(b) != 20 or b[4] not in (0x33, 0x25) or b[18] != 0x03 or (sum(b[:19]) & 0xFF) != b[19]:
             return None
         try:
             p = ysfpos.decode_block((b[4:17] + b"[/    ")[:19])

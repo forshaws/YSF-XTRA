@@ -37,7 +37,7 @@ def _digit(ch):
 def decode_block(b):
     """19 bytes -> dict(lat, lon, speed_kn, course, alt_m, symbol, msg_bits). lat/lon in
     signed decimal degrees (north and east positive). alt_m is None when absent."""
-    if len(b) != BLOCK_LEN or b[0] != 0x33:
+    if len(b) != BLOCK_LEN or b[0] not in (0x33, 0x25):      # '3' (FT5D, FT3D), '%' (FTM-400)
         raise ValueError("not a GPS block")
     dig, flag = zip(*[_digit(c) for c in b[1:7]])
     amb = 0                                   # blanked digits from the right (position ambiguity)

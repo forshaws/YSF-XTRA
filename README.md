@@ -306,7 +306,7 @@ Admin actions (DMR toggle, `POST /api/delete` for messages, news items and pictu
 
 ## Tested on
 
-FT5D (sending and receiving, voice and text, News Station upload and download), FT3D (receiving a generated text message), a Raspberry Pi 3B+ with Raspbian 9 and Python 3.5, with pYSFReflector as the reflector. Other reflector software, such as the G4KLX YSFReflector, is untested. Other radio models, other firmware, voice modes other than voice/data mode 2, and image or data messages are untested.
+FT5D (sending and receiving, voice and text, News Station upload and download), FT3D (receiving a generated text message), FTM-400 (text message and position, one capture), a Raspberry Pi 3B+ with Raspbian 9 and Python 3.5, with pYSFReflector as the reflector. Other reflector software, such as the G4KLX YSFReflector, is untested. Other radio models, other firmware, voice modes other than voice/data mode 2, and image or data messages are untested.
 
 ## Responsible use
 
