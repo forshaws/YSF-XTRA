@@ -242,6 +242,41 @@ The check prints `ALL 7 MATCH the capture byte for byte`. Use your own callsign 
 sudo -u ysfdash python3 /opt/ysfdash/ysfboard.py add N0CALL "Net moved to Wednesday"
 ```
 
+### 10. Welcome message and CHECK (optional)
+
+A station that links to the reflector after 5 minutes without any traffic gets a directed text message, for example `M0RWV welcome to GB-CCARC #14561. There are 12 stations linked. 06:34:12 UTC`. A station that sends the text message `CHECK` to everyone gets the same message back at any time. It needs the News Station set up (section 6): the same `ysfnews.py` service sends it under the same callsign and radio ID.
+
+1. Install the text and edit it (one message per line, 80 characters at most, up to 3 lines; `{call}`, `{count}` stations linked, `{time}` as HH:MM:SS UTC, `{date}`):
+
+   ```
+   sudo cp examples/welcome.txt /var/lib/ysfradio/welcome.txt
+   sudo cp src/ysfwelcome.py src/ysfmsgd.py src/ysfmsgstore.py src/ysfnews.py /opt/ysfdash/
+   sudoedit /var/lib/ysfradio/welcome.txt
+   ```
+
+2. Add the options to the two units, then restart both. `--welcome-self` is the callsign you gave `ysfnews.py --call`: its own links and messages are not answered.
+
+   ```
+   # ysfmsg.service, on the ExecStart line
+   --welcome-out /var/lib/ysfradio/welcome.json --welcome-self N0CALL
+   # ysfnews.service, on the ExecStart line
+   --welcome-queue /var/lib/ysfradio/welcome.json
+   ```
+
+   ```
+   sudo systemctl daemon-reload
+   sudo systemctl restart ysfmsg ysfnews
+   ```
+
+3. Test: send `CHECK` to everyone from a radio. `journalctl -u ysfmsg -u ysfnews -f` shows `CHECK from CALL, reply queued` and `sent check ... to CALL ID`.
+
+How it decides:
+
+- A link is a poll from a callsign not heard for 60 seconds. It is welcomed if no station sent anything for `--welcome-quiet` seconds (default 300); data from the joining station in the 5 seconds around its own link does not count. Each link is logged by `ysfmsgd` as `link from CALL: ...`, with the reason when it is not welcomed. Traffic from the reflector's own sender (`--welcome-self`) does not count. After a restart of `ysfmsg` the first 5 minutes count as traffic, so stations that are already linked are not welcomed.
+- A link carries the callsign only. The radio ID is read from what a radio transmits (voice or text message) and is kept in memory. If a radio ID of that callsign was heard since `ysfmsg` started, the welcome goes out at once to the most recent one. Otherwise it goes out when a radio of that callsign first transmits, within `--welcome-wait` seconds (default 600) of the link.
+- A callsign and radio ID pair is welcomed once per link, and not again within 1 hour, so a second radio under one callsign gets its own welcome. A `CHECK` is answered at most once per 30 seconds per radio.
+- `{count}` is the number of callsigns that polled in the last 60 seconds, the joining station and any bridge included.
+
 ### Upgrading
 
 ```
@@ -280,12 +315,14 @@ Keep your own `.service` files; only compare them with the ones in `systemd/`. R
 - Writes `messages.json` and `positions.json` for the dashboard. Directed message text is discarded unread.
 - With `--pictures-dir`, assembles pictures from camera microphones (`src/ysfpic.py`) and keeps those from whitelisted senders.
 - Also recognises WIRES-X News Station requests: a download request is queued for `ysfnews.py`, and an upload (a text addressed to the News Station room ID) is kept as a public news item.
+- With `--welcome-out`, queues a welcome for a station that links after a quiet period, and a reply to the text message `CHECK` sent to everyone (`src/ysfwelcome.py`, section 10).
 
 **News Station responder** (`src/ysfnews.py`, `docs/README-news.md`)
 
 - A radio's News Station "download, message" is answered with the lines of `news.txt` (`examples/news.txt` is a generic welcome to edit), then the latest uploads from other radios, as directed text messages under your own callsign and radio ID. The radio shows them in its message log.
 - A radio's "upload, message" is stored on the reflector, so stations that connect later can download it, like a small bulletin board. At most 20 items for 30 days, 3 per callsign per hour.
 - A "download, picture" request is answered with the newest picture uploaded to the News Station. Voice downloads are not answered.
+- With `--welcome-queue`, sends the welcome text (`examples/welcome.txt`) to a station that linked after a quiet period, and to a station that sent `CHECK` to everyone.
 
 **Research tools** (`src/`)
 
@@ -338,7 +375,7 @@ Admin actions (DMR toggle, `POST /api/delete` for messages, news items and pictu
 - Text from radios is shown with `textContent`. There is no `innerHTML`, no inline script and no inline style, and the content security policy allows scripts and styles from the page's own origin only. Checked with hostile payloads in message text, callsigns and the positions file.
 - Messages are limited to 80 printable ASCII characters, sender callsigns must match a strict pattern, positions must be numbers in range. At most 20 messages, 7 days, 10 per callsign per hour. News items: 20, 30 days, 3 per callsign per hour.
 - The decoder only records what the radios transmit to the reflector, which is already visible to everyone connected to it. It stores the sender callsign, time, text and latest position per callsign (30 days). Directed messages are discarded unread; the only exception is a News Station upload, which is public by design.
-- The News Station responder (`ysfnews.py`) is a separate service with no privileges. It answers only requests that name a valid callsign and radio ID, once per radio per 2 minutes and at most 30 requests an hour, and sends only under the callsign and radio ID you configure.
+- The News Station responder (`ysfnews.py`) is a separate service with no privileges. It answers only requests that name a valid callsign and radio ID, once per radio per 2 minutes and at most 30 requests an hour, and sends only under the callsign and radio ID you configure. Welcomes: at most 30 an hour, once per callsign and radio ID per hour.
 - Files shared between the services are changed under a lock, so simultaneous writes are not lost.
 - YSF has no authentication: anyone can send a message or position under any callsign, as with APRS-IS. The dashboard shows what the packet says. If the reflector blocks or mutes a source, the decoder still sees that source's packets because it reads the port before the reflector decides.
 

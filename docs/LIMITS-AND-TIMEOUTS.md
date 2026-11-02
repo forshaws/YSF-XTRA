@@ -29,6 +29,22 @@ A text message that is not stored is logged by `ysfmsgd` as `message from CALL n
 | Wait before replying | 1.5 s | `--delay` |
 | Gap between messages | 4 s | `--gap` |
 
+## Welcome and CHECK (`ysfmsgd`, `ysfnews`)
+
+| Limit | Default | Option |
+|---|---|---|
+| Quiet period before a link is welcomed | 300 s without traffic from any station (the joiner's own link data within 5 s of the link excepted) | `--welcome-quiet` (`ysfmsgd`) |
+| Start-up | counts as traffic, so no welcomes for the first `--welcome-quiet` seconds | fixed |
+| A callsign counts as linked again after | 60 s without a poll | fixed (`LINK_TIMEOUT`, `ysfwelcome.py`) |
+| First transmission after a link still welcomed | 600 s | `--welcome-wait` (`ysfmsgd`) |
+| Same callsign and radio ID welcomed again | after 3600 s | fixed |
+| Same radio's CHECK answered again | after 30 s | fixed |
+| Radio IDs remembered (memory only) | 7 days | fixed (`ID_KEEP`) |
+| Welcomes sent per hour, all stations | 30 | `--welcome-per-hour` (`ysfnews`) |
+| Wait before a welcome to a new link | 10 s | `--welcome-delay` (`ysfnews`) |
+| Wait before a CHECK reply | 1.5 s | `--delay` |
+| Text lines per welcome | up to 3 | fixed |
+
 ## Pictures (`ysfmsgd`, `ysfradio`)
 
 | Limit | Default | Option |

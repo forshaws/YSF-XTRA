@@ -21,6 +21,12 @@ the newest picture a radio uploaded to the News Station (ysfmsgd --pictures-dir,
 here), sent as a directed picture transfer (ysfpicsend.py). With no picture yet, the radio gets
 one short text message. Needs --lat and --lon: the position the picture is sent from.
 
+A welcome (--welcome-queue, written by ysfmsgd --welcome-out) is sent to a station that linked
+to the reflector after a quiet spell, and as the reply to a text message CHECK sent to everyone.
+The text comes from --welcome-file: one message per line (up to 3 are sent), at most 80
+printable ASCII characters each, {call} = the station, {count} = stations linked, {time} =
+HH:MM:SS (UTC), {date} = DD/MM/YYYY (UTC). The file is read on every message.
+
 news file: one message per line, at most 80 printable ASCII characters; blank lines and
 lines starting with # are ignored. {call} is replaced by the requester's callsign.
 The file is read on every request, so edits take effect at once.
@@ -74,6 +80,31 @@ def read_board(path, n):
         head = "%s %s: " % (m["call"], time.strftime("%d/%m", time.localtime(m["t"])))
         out.append(ysfmsgstore.clean_text(head + m["text"]))
     return out[::-1]
+
+
+def read_welcome(path, call, count, now, max_lines=3):
+    """Welcome file -> list of message texts (printable ASCII, <= 80 characters)."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            raw = f.read(4096)
+    except OSError:
+        return []
+    subs = (("{call}", call), ("{count}", str(max(1, count))),
+            ("{time}", time.strftime("%H:%M:%S", time.gmtime(now))),
+            ("{date}", time.strftime("%d/%m/%Y", time.gmtime(now))))
+    out = []
+    for ln in raw.splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith("#"):
+            continue
+        for k, v in subs:
+            ln = ln.replace(k, v)
+        ln = ysfmsgstore.clean_text(ln)
+        if ln:
+            out.append(ln)
+        if len(out) >= max_lines:
+            break
+    return out
 
 
 class Sender(object):
@@ -163,6 +194,12 @@ def main():
     ap.add_argument("--lat", type=float, default=None, help="latitude pictures are sent from (needed with --pic-queue)")
     ap.add_argument("--lon", type=float, default=None, help="longitude pictures are sent from (needed with --pic-queue)")
     ap.add_argument("--pic-per-hour", type=int, default=10, help="most picture requests answered per hour, all radios")
+    ap.add_argument("--welcome-queue", default="",
+                    help="welcome queue written by ysfmsgd --welcome-out (empty = no welcome messages)")
+    ap.add_argument("--welcome-file", default="/var/lib/ysfradio/welcome.txt", help="welcome message text")
+    ap.add_argument("--welcome-delay", type=float, default=10.0,
+                    help="seconds to wait after a station links before the welcome is sent (the link is still settling)")
+    ap.add_argument("--welcome-per-hour", type=int, default=30, help="most welcomes sent per hour, all stations")
     ap.add_argument("--dry-run", action="store_true", help="log what would be sent, send nothing")
     a = ap.parse_args()
 
@@ -191,6 +228,10 @@ def main():
     last_pid = max([r["id"] for r in preqs] or [0])
     psig = None
     phour = collections.deque()
+    wreqs, _ = ysfmsgstore.NewsQueue.load(a.welcome_queue) if a.welcome_queue else ([], 1)
+    last_wid = max([r["id"] for r in wreqs] or [0])
+    wsig = None
+    whour = collections.deque()
     log("watching %s, news file %s, sending as %s %s" % (a.queue, a.news, call, a.radio_id))
     if a.pic_queue:
         log("answering picture downloads from %s with the newest News Station picture" % a.pictures_dir)
@@ -253,7 +294,42 @@ def main():
                     seen[("pic", r["rid"])] = now
                     phour.append(now)
                     answer_picture(a, sender, pics, r)
+        if a.welcome_queue:
+            try:
+                st = os.stat(a.welcome_queue)
+                wcur = (st.st_mtime, st.st_size)
+            except OSError:
+                wcur = None
+            if wcur != wsig:
+                wsig = wcur
+                for r in ysfmsgstore.NewsQueue.read_after(a.welcome_queue, last_wid):
+                    last_wid = r["id"]
+                    answer_welcome(a, sender, r, whour)
         time.sleep(0.5)
+
+
+def answer_welcome(a, sender, r, whour):
+    now = time.time()
+    if now - r["t"] > 60:
+        return
+    while whour and now - whour[0] > 3600:
+        whour.popleft()
+    if len(whour) >= a.welcome_per_hour:
+        log("welcome hourly limit reached, ignoring %s" % r["call"])
+        return
+    kind = r.get("kind", "join")
+    time.sleep(max(0.0, a.welcome_delay if kind == "join" else a.delay))
+    n = r.get("n", 1)
+    texts = read_welcome(a.welcome_file, r["call"], n if isinstance(n, int) else 1, time.time())
+    if not texts:
+        log("welcome file empty or missing, nothing to send to %s" % r["call"])
+        return
+    whour.append(now)
+    if a.dry_run:
+        log("dry run: would send %s to %s %s: %r" % (kind, r["call"], r["rid"], texts))
+        return
+    sent = sender.send(texts, r["call"], r["rid"])
+    log("sent %s (%d of %d message(s)) to %s %s" % (kind, sent, len(texts), r["call"], r["rid"]))
 
 
 def answer_picture(a, sender, pics, r):

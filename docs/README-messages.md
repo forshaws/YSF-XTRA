@@ -36,7 +36,7 @@ New endpoint (GET, read-only, public like the rest of the dashboard): `/api/mess
 ## Install (files already copied to your home directory)
 
 ```
-sudo cp ysfdec.py ysfpos.py ysfmsgstore.py ysfmsgd.py ysfradio.py /opt/ysfdash/
+sudo cp ysfdec.py ysfpos.py ysfmsgstore.py ysfmsgd.py ysfwelcome.py ysfradio.py /opt/ysfdash/
 sudo cp ysfmsg.service ysfradio.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now ysfmsg

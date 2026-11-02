@@ -130,7 +130,7 @@ FT is 4 for this record length.
 | 20 | 10 | sender callsign (repeated) |
 | 30 | 10 | sender callsign (repeated) |
 | 40 | 15 | spaces |
-| 55 | 5 | sender radio ID (repeated) |
+| 55 | 5 | sender radio ID (repeated; an FTM-400 has `**********` at 0 to 9, so read it here) |
 | 60 | 1 | counter byte: goes up by one for each data transmission the radio sends (text messages and WIRES-X requests, 5.8); it equalled the sequence number minus 16 in the first samples but not later ones |
 | 61 | 3 | `Ge_` (no GPS block; `Gf_` when one follows, see 5.6) |
 | 64 | 1 | `3` |
@@ -215,10 +215,10 @@ A voice transmission in voice/data mode 2 (FICH DT 2, FT 7) sends eight frames i
 
 | FN | Content |
 |---|---|
-| 0 | `*****` + sender radio ID |
+| 0 | destination radio ID (`*****` for everyone; `14561` in an FTM-400 capture) + sender radio ID |
 | 1 to 3 | sender callsign (three copies) |
 | 4 | spaces |
-| 5 | five spaces + sender radio ID |
+| 5 | five spaces + sender radio ID (the frame read for the radio ID) |
 | 6 | 4 bytes, then the first six bytes of the position block |
 | 7 | the rest of the position block, `0x20`, `0x03`, checksum |
 

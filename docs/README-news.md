@@ -15,7 +15,7 @@ How it works:
 From the repository folder:
 
 ```
-sudo cp src/ysfdec.py src/ysfpos.py src/ysfsend.py src/ysfmsgstore.py src/ysfpic.py src/ysfpicsend.py src/ysfmsgd.py src/ysfnews.py src/ysfboard.py /opt/ysfdash/
+sudo cp src/ysfdec.py src/ysfpos.py src/ysfsend.py src/ysfmsgstore.py src/ysfpic.py src/ysfpicsend.py src/ysfmsgd.py src/ysfwelcome.py src/ysfnews.py src/ysfboard.py /opt/ysfdash/
 sudo cp examples/news.txt /var/lib/ysfradio/news.txt
 sudo cp cap_HELLO.jsonl /var/lib/ysfradio/news-template.jsonl
 sudo chown ysfdash:ysfdash /var/lib/ysfradio/news.txt /var/lib/ysfradio/news-template.jsonl
@@ -72,7 +72,13 @@ Changes apply to the next download, with no restart. Install: `sudo cp ysfboard.
 | `--pictures-dir DIR` | `/var/lib/ysfradio/pictures` | picture folder written by `ysfmsgd` |
 | `--lat`, `--lon` | none | position the picture is sent from (your node's, in decimal degrees) |
 | `--pic-per-hour N` | 10 | most picture requests answered per hour, all radios |
+| `--welcome-queue FILE` | off | welcome queue written by `ysfmsgd --welcome-out`; turns on welcome and CHECK replies |
+| `--welcome-file FILE` | `/var/lib/ysfradio/welcome.txt` | welcome text, up to 3 lines (`{call}`, `{count}`, `{time}`, `{date}`) |
+| `--welcome-delay S` | 10 | wait after a station links before its welcome is sent (a CHECK reply uses `--delay`) |
+| `--welcome-per-hour N` | 30 | most welcomes sent per hour, all stations |
 | `--dry-run` | off | log what would be sent, send nothing |
+
+Options (ysfmsgd.py, welcome): `--welcome-out FILE` (queue for welcomes and CHECK replies), `--welcome-self CALL` (the `--call` of `ysfnews.py`; required with `--welcome-out`), `--welcome-quiet S` (300), `--welcome-wait S` (600). See README section 10.
 
 Options (ysfmsgd.py): `--picreq-out FILE` (queue for picture downloads), `--board-out FILE`, `--board-room-id ID`, `--board-per-hour N` (default 3 per callsign), `--board-days N` (default 30). At most 20 items are kept.
 

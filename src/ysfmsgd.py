@@ -129,6 +129,12 @@ class Activity(object):
             self._write("", "", now)
 
 
+def from_this_machine(frame):
+    """True for a packet sent from the reflector's own machine (loopback, or source = destination)."""
+    ip = frame[14:34]
+    return len(ip) == 20 and (ip[12] == 127 or ip[12:16] == ip[16:20])
+
+
 def field(b):
     return b.decode("ascii", "replace").replace("\x00", " ").strip()
 
@@ -136,11 +142,14 @@ def field(b):
 class Decoder(object):
     """Turns YSFD packets into stored messages."""
 
-    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None, act=None, picreq=None):
+    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None, act=None, picreq=None, wel=None):
         self.store = store
         self.pics = pics                    # ysfpic.PicRx or None
         self.act = act                      # Activity or None
         self.picreq = picreq                # NewsQueue for News Station picture downloads, or None
+        self.wel = wel                      # ysfwelcome.Welcome or None
+        self.local = False                  # the packet being decoded came from this machine
+        self.vid = {}                       # (gw, src) -> time its radio ID was last read from voice
         self.pos = pos
         self.news = news
         self.news_last = {}
@@ -182,8 +191,10 @@ class Decoder(object):
         ctr, frame = p[34], p[35:155]
         if frame[:5] != y.SYNC:
             return None
+        if self.wel is not None:
+            self.wel.traffic(gw, src, self.local, now)
         f = self.fich(frame[5:30])
-        if f and f["DT"] == 2 and self.pos is not None:
+        if f and f["DT"] == 2 and (self.pos is not None or self.wel is not None):
             return self.voice(gw, src, f, frame, now)
         if not f or f["DT"] != 1:
             return None
@@ -221,15 +232,18 @@ class Decoder(object):
                 pid = self.pics.stream_end(gw, src, a["frames"], now)
                 if pid is not None:
                     return None
-            return self.finish(src, a["segs"], now, a.get("kind") != "pic")
+            return self.finish(src, a["segs"], now, a.get("kind") != "pic", gw)
         self.gc(now)
         return None
 
     def voice(self, gw, src, f, frame, now):
         """Voice/data mode 2: the radio's position rides in frames FN6 and FN7 of the
         8-frame cycle (10 data bytes each). Joined they are: 4 bytes, 13 bytes of Mic-E
-        (marker '3', latitude, longitude, speed, course), 0x20, 0x03, checksum."""
-        if f["FI"] != 1 or f["FN"] not in (6, 7):
+        (marker '3', latitude, longitude, speed, course), 0x20, 0x03, checksum.
+        Frame FN5 carries five spaces and the sender's radio ID (read for the welcome messages)."""
+        if f["FI"] != 1 or f["FN"] not in (5, 6, 7) or (f["FN"] != 5 and self.pos is None):
+            return None
+        if f["FN"] == 5 and (self.wel is None or now - self.vid.get((gw, src), 0) < 30):
             return None
         bits = y.bytes_to_bits(frame)[240:960]
         g = []
@@ -239,6 +253,15 @@ class Decoder(object):
         if not r["ok"]:
             return None
         key = (gw, src)
+        if f["FN"] == 5:
+            b = y.bits_to_bytes(r["data"])
+            rid = b[5:10].decode("latin-1")
+            if b[:5] == b"     " and ysfmsgstore.RID_RE.match(rid):
+                if len(self.vid) > 256:
+                    self.vid.clear()
+                self.vid[key] = now
+                self.wel.heard_id(gw, src, rid, self.local, now)
+            return None
         v = self.vseg.get(key)
         if f["FN"] == 6:
             self.vseg[key] = {"t": now, "fn6": y.bits_to_bytes(r["data"])}
@@ -341,7 +364,7 @@ class Decoder(object):
         sys.stderr.write("ysfmsgd: message from %s not stored: %s\n" % (src, why))
         sys.stderr.flush()
 
-    def finish(self, src, segs, now, log=True):
+    def finish(self, src, segs, now, log=True, gw=""):
         n = max(segs) + 1 if segs else 0
         if n in (2, 3) and all(i in segs for i in range(n)):     # control records, not text
             self.news_request(src, b"".join(segs[i] for i in range(n)), now)
@@ -366,6 +389,13 @@ class Decoder(object):
                 self.drop(src, "checksum does not match", now)
             return None
         self.position(src, rec, now)
+        if self.wel is not None:
+            rid = field(rec[55:60])                  # the sender's ID again (an FTM-400 has stars at 5)
+            if (pr["to_call"] == ALL and not pr["to_id"] and pr["text"].strip().upper() == "CHECK" and
+                    self.wel.check(gw, src, rid, self.local, now)):
+                sys.stderr.write("ysfmsgd: CHECK from %s, reply queued\n" % src)
+                sys.stderr.flush()
+            self.wel.heard_id(gw, src, rid, self.local, now)
         if self.board is not None and self.board_room and pr["to_id"] == self.board_room:
             return self.upload(src, pr, rec, now)
         if pr["to_call"] != ALL or pr["to_id"]:
@@ -416,7 +446,17 @@ def main():
     ap.add_argument("--pictures-days", type=int, default=7, help="drop pictures older than this")
     ap.add_argument("--activity-out", default="/var/lib/ysfradio/activity.json",
                     help="file telling the dashboard a picture or data transfer is in progress (empty = off)")
+    ap.add_argument("--welcome-out", default="",
+                    help="queue file for welcome messages and CHECK replies, read by ysfnews.py (empty = off)")
+    ap.add_argument("--welcome-self", default="",
+                    help="callsign ysfnews.py sends as (--call there); its own links and messages are not answered")
+    ap.add_argument("--welcome-quiet", type=int, default=300,
+                    help="seconds without traffic from any station before a link is welcomed (default 300)")
+    ap.add_argument("--welcome-wait", type=int, default=600,
+                    help="seconds after a link in which a radio's first transmission is still welcomed (default 600)")
     a = ap.parse_args()
+    if a.welcome_out and not ysfmsgstore.CALL_RE.match(a.welcome_self.upper()):
+        ap.error("--welcome-out needs --welcome-self (the callsign given to ysfnews.py --call)")
     if not hasattr(socket, "AF_PACKET"):
         raise SystemExit("needs Linux")
     try:
@@ -433,9 +473,15 @@ def main():
         pics = ysfpic.PicRx(ysfpic.PicFile(a.pictures_dir, max(1, a.pictures_days)),
                             ysfpic.Allow(a.pictures_allow), max(1, a.pictures_per_hour),
                             room=a.board_room_id)
+    wel = None
+    if a.welcome_out:
+        import ysfwelcome                    # only needed when the welcome messages are on
+        wel = ysfwelcome.Welcome(ysfmsgstore.NewsQueue(a.welcome_out), max(0, a.welcome_quiet),
+                                 max(0, a.welcome_wait), self_call=a.welcome_self)
+        wel.log = lambda t: (sys.stderr.write("ysfmsgd: %s\n" % t), sys.stderr.flush())
     dec = Decoder(ysfmsgstore.MsgFile(a.out, max(1, a.keep_days)), a.per_hour, pos, news,
                   board, a.board_room_id, a.board_per_hour, pics,
-                  Activity(a.activity_out) if a.activity_out else None, picreq)
+                  Activity(a.activity_out) if a.activity_out else None, picreq, wel)
     signal.signal(signal.SIGTERM, lambda *x: sys.exit(0))
     sys.stderr.write("ysfmsgd: watching UDP %d, writing %s\n" % (a.port, a.out))
     sys.stderr.flush()
@@ -446,6 +492,11 @@ def main():
         p = udp_payload(frame, a.port)
         if p is None:
             continue
+        if wel is not None:
+            dec.local = from_this_machine(frame)
+            if len(p) == 14 and p[:4] in (b"YSFP", b"YSFU"):
+                wel.poll(field(p[4:14]), p[3:4] == b"U", dec.local, time.time())
+                continue
         try:
             mid = dec.packet(p)
         except Exception as e:               # never die on a malformed frame

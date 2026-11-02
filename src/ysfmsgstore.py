@@ -261,14 +261,19 @@ class NewsQueue(object):
         except (KeyError, TypeError):
             return False
 
-    def add(self, call, rid, now=None):
-        """Queue a request. Returns its id, or None if the call or radio ID is not valid."""
+    def add(self, call, rid, now=None, extra=None):
+        """Queue a request. Returns its id, or None if the call or radio ID is not valid.
+        extra: more fields kept with the request (welcome messages: kind and station count)."""
         now = time.time() if now is None else now
         if not CALL_RE.match(call) or not RID_RE.match(rid):
             return None
         with self.lock:
             req, nxt = self.load(self.path)
-            req.append({"id": nxt, "t": round(now, 1), "call": call, "rid": rid})
+            r = {"id": nxt, "t": round(now, 1), "call": call, "rid": rid}
+            for k, v in (extra or {}).items():
+                if k not in r:
+                    r[k] = v
+            req.append(r)
             req = req[-NEWS_MAX:]
             tmp = self.path + ".tmp"
             fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o640)

@@ -1,0 +1,6 @@
+# Welcome message, sent by ysfnews.py (--welcome-file) to a station that links after a quiet spell,
+# and to a station that sends the text message CHECK to everyone.
+# One message per line, up to 80 characters (a longer line is cut off); lines starting with # are ignored.
+# {call} = the station, {count} = stations linked, {time} = HH:MM:SS UTC, {date} = DD/MM/YYYY UTC.
+# Edit any time, no restart needed.
+{call} welcome to GB-CCARC #14561. There are {count} stations linked. {time} UTC
