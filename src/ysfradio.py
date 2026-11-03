@@ -600,7 +600,7 @@ JS = r"""
   var last = null, admin = null, dmrPending = null;
   var gps = null, gpsErr = null, gpsAt = 0;
   var menuOpen = false, view = 'list', sel = 0, pin = '', msg = '', wantDmr = false;
-  var wantAllow = false, allowList = [], allowArm = -1, allowArmAt = 0, listSel = 0;
+  var wantAllow = false, allowList = [], allowArm = -1, allowArmAt = 0, listSel = 0, allowLoaded = false;
 
   function origin() {
     if (opt.loc === 'GPS') { return gps; }
@@ -815,7 +815,7 @@ JS = r"""
     l.push({k: 'gm', label: 'RADAR VIEW', val: d.aprs ? 'OPEN' : 'N/A', dis: !d.aprs});
     l.push({k: 'log', label: 'LOG', val: (d.msg || d.news || d.pics) ? (unreadCount() ? unreadCount() + ' NEW' : 'OPEN') : 'N/A', dis: !(d.msg || d.news || d.pics)});
     l.push({k: 'aprs', label: 'APRS POSITIONS', val: d.aprs ? (d.aprs.connected ? 'LIVE ' : 'OFFLINE ') + d.aprs.known : 'N/A', dis: true});
-    l.push({k: 'allow', label: 'PIC SENDERS', val: d.pics ? (admin ? String(allowList.length) : 'ADMIN') : 'N/A', dis: !d.pics});
+    l.push({k: 'allow', label: 'PIC SENDERS', val: d.pics ? (admin ? (allowLoaded ? String(allowList.length) : '...') : 'ADMIN') : 'N/A', dis: !d.pics});
     l.push({k: 'admin', label: 'ADMIN', val: admin ? 'LOGOUT' : (d.auth ? 'LOGIN' : 'NO PIN SET'), dis: !admin && !d.auth});
     l.push({k: 'about', label: 'ABOUT', val: ''});
     return l;
@@ -841,14 +841,14 @@ JS = r"""
   }
   function loadAllow() {
     post('api/picallow', {op: 'list'}, function (code, j) {
-      if (code === 200) { allowList = j.allow || []; }
-      else if (code === 401) { admin = null; view = 'pin'; wantAllow = true; pin = ''; msg = 'SESSION EXPIRED'; }
+      if (code === 200) { allowList = j.allow || []; allowLoaded = true; }
+      else if (code === 401) { admin = null; allowLoaded = false; if (view === 'list') { msg = 'SESSION EXPIRED'; } else { view = 'pin'; wantAllow = true; pin = ''; msg = 'SESSION EXPIRED'; } }
       if (menuOpen) { drawMenu(); }
     });
   }
   function submitAllow(op, call, id) {
     post('api/picallow', {op: op, call: call, id: id}, function (code, j) {
-      if (code === 200) { allowList = j.allow || []; msg = op === 'add' ? 'ADDED ' + call : 'REMOVED ' + call; view = 'allow'; sel = 0; }
+      if (code === 200) { allowList = j.allow || []; allowLoaded = true; msg = op === 'add' ? 'ADDED ' + call : 'REMOVED ' + call; view = 'allow'; sel = 0; }
       else if (code === 401) { admin = null; view = 'pin'; wantAllow = true; pin = ''; msg = 'SESSION EXPIRED'; }
       else if (code === 400) { msg = 'BAD CALLSIGN OR RADIO ID'; }
       else if (code === 404) { msg = 'NOT FOUND'; }
@@ -973,7 +973,7 @@ JS = r"""
     if (dc) { s = (s + n) % n; } else if (s < 0 || s >= n) { return; }
     sel = s; drawMenu();
   }
-  function openMenu() { closeGm(); menuOpen = true; view = 'list'; sel = 0; pin = ''; msg = ''; wantAllow = false; $('menu').className = 'menu'; drawMenu(); if (document.activeElement && document.activeElement.blur) { document.activeElement.blur(); } }
+  function openMenu() { closeGm(); menuOpen = true; view = 'list'; sel = 0; pin = ''; msg = ''; wantAllow = false; $('menu').className = 'menu'; drawMenu(); if (admin && last && last.pics) { loadAllow(); } if (document.activeElement && document.activeElement.blur) { document.activeElement.blur(); } }
   function closeMenu() { menuOpen = false; $('menu').className = 'menu hidden'; $('menubtn').focus(); }
   function back() {
     if (view === 'addcall') { view = 'allow'; msg = ''; drawMenu(); }
@@ -1005,7 +1005,7 @@ JS = r"""
       if (code === 200 && j.csrf) {
         admin = j.csrf; msg = 'ADMIN OK';
         if (wantAllow) { wantAllow = false; wantDmr = false; view = 'allow'; sel = 0; loadAllow(); }
-        else { view = wantDmr ? 'confirm' : 'list'; sel = wantDmr ? 0 : listSel; wantDmr = false; }
+        else { view = wantDmr ? 'confirm' : 'list'; sel = wantDmr ? 0 : listSel; wantDmr = false; if (last && last.pics) { loadAllow(); } }
       } else if (code === 429) { msg = 'LOCKED - TRY LATER'; }
       else if (code === 403) { msg = 'WRONG PIN'; }
       else { msg = 'LOGIN UNAVAILABLE'; }
@@ -1068,7 +1068,7 @@ JS = r"""
       opt.units = opt.units === 'MI' ? 'KM' : 'MI'; store.set('units', opt.units);
       if (last) { render(last); }
     } else if (it.k === 'admin') {
-      if (admin) { post('api/logout', {}, function () { admin = null; msg = 'LOGGED OUT'; drawMenu(); }); }
+      if (admin) { post('api/logout', {}, function () { admin = null; allowLoaded = false; msg = 'LOGGED OUT'; drawMenu(); }); }
       else if (d.auth) { view = 'pin'; pin = ''; wantDmr = false; }
       else { msg = 'ADMIN PIN NOT SET ON SERVER'; }
     } else if (it.k === 'allow') {
