@@ -405,6 +405,25 @@ border-bottom:1px solid #1d1d20;cursor:pointer;user-select:none;-webkit-user-sel
 .mnew{background:var(--red);color:#fff;padding:0 calc(var(--u)*.9);border-radius:calc(var(--u)*.4);
 font-size:calc(var(--u)*2.3)}
 .mx{margin-top:calc(var(--u)*.4);font-size:calc(var(--u)*3);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--white)}
+.mb.tl{display:grid;overflow:hidden;gap:calc(var(--u)*1.2);grid-template-columns:repeat(var(--c,3),minmax(0,1fr));grid-template-rows:repeat(var(--r,2),minmax(0,1fr))}
+.tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--u)*.6);min-width:0;min-height:0;overflow:hidden;
+cursor:pointer;text-align:center;padding:calc(var(--u)*.8);color:#fff;font-weight:700;font-size:calc(var(--u)*3.3);letter-spacing:.05em;line-height:1.15;
+background:#0d1830;border:calc(var(--u)*.3) solid #2a4a86;border-radius:calc(var(--u)*1.4);
+box-shadow:inset 0 calc(var(--u)*-.5) 0 rgba(0,0,0,.45)}
+.tile .tv{font-size:calc(var(--u)*2.5);color:var(--blue);letter-spacing:.04em}
+.tile:active{transform:scale(.97)}
+.tile.sel{background:var(--blue);border-color:#fff}
+.tile.sel .tv{color:#fff}
+.tile.on .tv{color:#19d36b}
+.tile.new .tv{color:var(--red)}
+.tile.sel.on .tv,.tile.sel.new .tv{color:#fff}
+.tile.dis{color:var(--dim);background:#0a0d14;border-color:#1f2430}
+.tile.dis .tv{color:var(--dim)}
+.tile.dis.sel{background:#1a2438;border-color:var(--dim)}
+.mf.tiles{justify-content:space-between;align-items:center}
+.mf.tiles .key{min-width:calc(var(--u)*16)}
+.mpg{flex:1;text-align:center;font-size:calc(var(--u)*2.6);font-weight:700;color:var(--dim);letter-spacing:.2em}
+.uprobe{position:absolute;left:0;top:0;width:var(--u);height:0;visibility:hidden;pointer-events:none}
 @media (max-aspect-ratio:1/1){
 html,body{height:auto;min-height:100%}
 body{display:block;-webkit-text-size-adjust:100%;text-size-adjust:100%}
@@ -581,7 +600,7 @@ JS = r"""
   var last = null, admin = null, dmrPending = null;
   var gps = null, gpsErr = null, gpsAt = 0;
   var menuOpen = false, view = 'list', sel = 0, pin = '', msg = '', wantDmr = false;
-  var wantAllow = false, allowList = [], allowArm = -1, allowArmAt = 0;
+  var wantAllow = false, allowList = [], allowArm = -1, allowArmAt = 0, listSel = 0;
 
   function origin() {
     if (opt.loc === 'GPS') { return gps; }
@@ -799,7 +818,6 @@ JS = r"""
     l.push({k: 'allow', label: 'PIC SENDERS', val: d.pics ? (admin ? String(allowList.length) : 'ADMIN') : 'N/A', dis: !d.pics});
     l.push({k: 'admin', label: 'ADMIN', val: admin ? 'LOGOUT' : (d.auth ? 'LOGIN' : 'NO PIN SET'), dis: !admin && !d.auth});
     l.push({k: 'about', label: 'ABOUT', val: ''});
-    l.push({k: 'exit', label: 'EXIT', val: ''});
     return l;
   }
   function confirmItems() {
@@ -845,6 +863,12 @@ JS = r"""
   function drawMenu() {
     var body = $('mbody'), title = $('mtitle');
     clear(body);
+    body.className = 'mb';
+    var tiles = view === 'list';
+    $('mf').className = tiles ? 'mf tiles' : 'mf';
+    ['kup', 'kdn', 'ksel'].forEach(function (id) { $(id).className = tiles ? 'key hidden' : (id === 'ksel' ? 'key red' : 'key'); });
+    $('kfwd').className = 'key hidden';
+    $('mpg').textContent = '';
     $('mmsg').textContent = msg;
     if (view === 'pin') {
       title.textContent = 'ADMIN PIN';
@@ -896,6 +920,7 @@ JS = r"""
       cq.textContent = 'DMR / ALLSTAR X-LINK';
       body.appendChild(cq);
     }
+    if (view === 'list') { drawTiles(items); return; }
     items.forEach(function (it, i) {
       var div = document.createElement('div');
       div.className = 'mi' + (i === sel ? ' sel' : '') + (it.dis ? ' dis' : '');
@@ -906,11 +931,53 @@ JS = r"""
       body.appendChild(div);
     });
   }
-  function openMenu() { closeGm(); menuOpen = true; view = 'list'; sel = 0; pin = ''; msg = ''; wantAllow = false; $('menu').className = 'menu'; drawMenu(); $('ksel').focus(); }
+  /* ---- main menu as touch tiles: columns and rows follow the size of the screen, FWD / BACK page through them ---- */
+  var tcols = 3, tper = 6;
+  function tileGrid() {
+    var body = $('mbody'), pr = $('uprobe'), u = pr ? pr.getBoundingClientRect().width : 0;
+    var w = body.clientWidth, h = body.clientHeight;
+    if (!u || !w || !h) { return {c: 3, r: 2}; }
+    w = w / u - 3.2; h = h / u - 2.8;                  // inside the padding, in display units
+    var c = Math.max(1, Math.min(4, Math.floor((w + 1.2) / (26 + 1.2))));
+    var r = Math.max(1, Math.min(6, Math.floor((h + 1.2) / (15 + 1.2))));
+    return {c: c, r: r};
+  }
+  function drawTiles(items) {
+    var body = $('mbody'), g = tileGrid(), per = g.c * g.r;
+    tcols = g.c; tper = per;
+    var pages = Math.ceil(items.length / per), page = Math.floor(sel / per);
+    body.className = 'mb tl';
+    body.style.setProperty('--c', String(g.c));
+    body.style.setProperty('--r', String(g.r));
+    items.slice(page * per, page * per + per).forEach(function (it, j) {
+      var i = page * per + j, v = String(it.val || '');
+      var div = document.createElement('div');
+      div.className = 'tile' + (i === sel ? ' sel' : '') + (it.dis ? ' dis' : '') + (v === 'ON' ? ' on' : '') + (/ NEW$/.test(v) ? ' new' : '');
+      var a = document.createElement('div'); a.textContent = it.label;
+      div.appendChild(a);
+      if (v) { var b = document.createElement('div'); b.className = 'tv'; b.textContent = v; div.appendChild(b); }
+      div.addEventListener('click', function () { sel = i; drawMenu(); activate(); });
+      body.appendChild(div);
+    });
+    $('mpg').textContent = pages > 1 ? (page + 1) + ' / ' + pages : '';
+    if (page < pages - 1) { $('kfwd').className = 'key'; }
+  }
+  function tilePage(dir, keep) {
+    var n = curItems().length, page = Math.floor(sel / tper), pages = Math.ceil(n / tper), np = page + dir;
+    if (np < 0) { if (!keep) { closeMenu(); } return; }
+    if (np >= pages) { return; }
+    sel = Math.min(n - 1, np * tper); msg = ''; drawMenu();
+  }
+  function moveTile(dc, dr) {
+    var n = curItems().length, s = sel + dc + dr * tcols;
+    if (dc) { s = (s + n) % n; } else if (s < 0 || s >= n) { return; }
+    sel = s; drawMenu();
+  }
+  function openMenu() { closeGm(); menuOpen = true; view = 'list'; sel = 0; pin = ''; msg = ''; wantAllow = false; $('menu').className = 'menu'; drawMenu(); if (document.activeElement && document.activeElement.blur) { document.activeElement.blur(); } }
   function closeMenu() { menuOpen = false; $('menu').className = 'menu hidden'; $('menubtn').focus(); }
   function back() {
     if (view === 'addcall') { view = 'allow'; msg = ''; drawMenu(); }
-    else if (view !== 'list') { view = 'list'; pin = ''; msg = ''; wantAllow = false; drawMenu(); } else { closeMenu(); }
+    else if (view !== 'list') { view = 'list'; sel = listSel; pin = ''; msg = ''; wantAllow = false; drawMenu(); } else { closeMenu(); }
   }
   function move(dir) {
     if (view === 'pin' || view === 'about' || view === 'addcall') { return; }
@@ -938,7 +1005,7 @@ JS = r"""
       if (code === 200 && j.csrf) {
         admin = j.csrf; msg = 'ADMIN OK';
         if (wantAllow) { wantAllow = false; wantDmr = false; view = 'allow'; sel = 0; loadAllow(); }
-        else { view = wantDmr ? 'confirm' : 'list'; sel = 0; wantDmr = false; }
+        else { view = wantDmr ? 'confirm' : 'list'; sel = wantDmr ? 0 : listSel; wantDmr = false; }
       } else if (code === 429) { msg = 'LOCKED - TRY LATER'; }
       else if (code === 403) { msg = 'WRONG PIN'; }
       else { msg = 'LOGIN UNAVAILABLE'; }
@@ -954,6 +1021,7 @@ JS = r"""
   function activate() {
     var it = curItems()[sel]; if (!it && view !== 'about' && view !== 'addcall') { return; }
     msg = '';
+    if (view === 'list') { listSel = sel; }
     if (view === 'about') { view = 'list'; drawMenu(); return; }
     if (view === 'addcall') {
       var c = ($('acall').value || '').toUpperCase().replace(/\s+/g, ''), rid = ($('aid').value || '').replace(/\s+/g, '');
@@ -966,19 +1034,19 @@ JS = r"""
         if (allowArm === sel && Date.now() - allowArmAt < 3000) { allowArm = -1; submitAllow('remove', e.call, e.id); return; }
         allowArm = sel; allowArmAt = Date.now(); msg = 'SELECT AGAIN TO REMOVE ' + e.call;
       } else if (it.k === 'add') { view = 'addcall'; }
-      else { view = 'list'; sel = 0; }
+      else { view = 'list'; sel = listSel; }
       drawMenu(); return;
     }
     if (view === 'confirm') {
       if (it.k === 'yes') { sendBridge(); return; }
-      view = 'list'; drawMenu(); return;
+      view = 'list'; sel = listSel; drawMenu(); return;
     }
     if (view === 'log') {
       if (it.k === 'message' && !it.dis) { var s1 = sel; closeMenu(); sel = s1; openMsg('msg', true); return; }
       if (it.k === 'news' && !it.dis) { var s2 = sel; closeMenu(); sel = s2; openMsg('news', true); return; }
       if (it.k === 'pics' && !it.dis) { var s4 = sel; closeMenu(); sel = s4; openMsg('pic', true); return; }
       if (it.dis) { drawMenu(); return; }
-      view = 'list'; sel = 0; drawMenu(); return;
+      view = 'list'; sel = listSel; drawMenu(); return;
     }
     var d = last || {};
     if (it.k === 'dmr') {
@@ -1014,7 +1082,8 @@ JS = r"""
     drawMenu();
   }
   $('menubtn').addEventListener('click', openMenu);
-  $('kback').addEventListener('click', back);
+  $('kback').addEventListener('click', function () { if (view === 'list') { tilePage(-1); } else { back(); } this.blur(); });
+  $('kfwd').addEventListener('click', function () { tilePage(1); this.blur(); });
   $('kup').addEventListener('click', function () { move(-1); });
   $('kdn').addEventListener('click', function () { move(1); });
   $('ksel').addEventListener('click', function () { if (view === 'pin') { submitPin(); } else { activate(); } });
@@ -1042,7 +1111,13 @@ JS = r"""
       else if ((e.key === 'n' || e.key === 'N') && last && last.news) { openMsg('news'); e.preventDefault(); }
       return;
     }
-    if (e.key === 'Escape') { back(); }
+    if (e.key === 'Escape') { if (view === 'list') { closeMenu(); } else { back(); } }
+    else if (view === 'list' && e.key === 'ArrowLeft') { moveTile(-1, 0); }
+    else if (view === 'list' && e.key === 'ArrowRight') { moveTile(1, 0); }
+    else if (view === 'list' && e.key === 'ArrowUp') { moveTile(0, -1); }
+    else if (view === 'list' && e.key === 'ArrowDown') { moveTile(0, 1); }
+    else if (view === 'list' && e.key === 'PageUp') { tilePage(-1, true); }
+    else if (view === 'list' && e.key === 'PageDown') { tilePage(1); }
     else if (view === 'addcall') { if (e.key === 'Enter') { activate(); } else { return; } }
     else if (view === 'pin') {
       if (e.key >= '0' && e.key <= '9' && e.key.length === 1) { padKey(e.key); }
@@ -1337,7 +1412,7 @@ INDEX = """<!doctype html>
 </div></div>
 <div id="menu" class="menu hidden"><div class="mh"><span id="mtitle">MENU</span><span id="mnode"></span></div>
 <div id="mbody" class="mb"></div><div id="mmsg" class="mmsg"></div>
-<div class="mf"><button id="kback" class="key" type="button">BACK</button><button id="kup" class="key" type="button">&#9650;</button><button id="kdn" class="key" type="button">&#9660;</button><button id="ksel" class="key red" type="button">SELECT</button></div></div>
+<div id="mf" class="mf"><button id="kback" class="key" type="button">BACK</button><span id="mpg" class="mpg"></span><button id="kup" class="key" type="button">&#9650;</button><button id="kdn" class="key" type="button">&#9660;</button><button id="ksel" class="key red" type="button">SELECT</button><button id="kfwd" class="key hidden" type="button">FWD &#9654;</button></div><div class="uprobe" id="uprobe"></div></div>
 <div id="mg" class="menu hidden"><div class="mh"><span id="mgt">LOG MSG</span><span id="mgpos"></span></div>
 <div id="mgb" class="mb mgl"></div>
 <div class="mf"><button id="mback" class="key" type="button">BACK</button><button id="mdel" class="key hidden" type="button">DEL</button><button id="mtop" class="key" type="button">TOP</button><button id="mup" class="key" type="button">&#9650;</button><button id="mdn" class="key red" type="button">&#9660;</button></div></div>

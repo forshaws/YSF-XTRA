@@ -3,6 +3,7 @@
 New in this version:
 
 - **MENU** button (top right, or press `M`). Works with mouse, touch, arrow keys, Enter and Esc.
+- **Tile menu**: the main MENU is a grid of touch tiles. Columns and rows follow the screen size. When there are more tiles than fit, FWD (lower right) and BACK (lower left) change page and the page number is shown between them; BACK on the first page closes the menu. Arrow keys move between tiles, Enter opens one, PageUp and PageDown change page, Esc closes the menu. LOG, PIC SENDERS, the confirmation and the PIN keypad keep their list and keypad layouts, each with a BACK button that returns to the tile you came from.
 - **DMR badge** in the top bar: `DMR ON` (green), `DMR ...` (blinking while starting/stopping), `DMR OFF`.
   Hidden if `--bridge-unit` is not set.
 - **DMR X-LINK** menu item: starts/stops `mmdvm_bridge_ysf.service`. Needs the admin PIN (on-screen keypad).
