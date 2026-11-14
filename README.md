@@ -2,7 +2,7 @@
 
 Extras for a YSF (Yaesu System Fusion) reflector: a radio-style web dashboard, a documented decoder for the text messages and GPS positions that Yaesu C4FM radios send through it, and a News Station that answers WIRES-X news requests with text messages and keeps uploads from your users.
 
-Python 3.5+, standard library only. Written for a Raspberry Pi 3B+ running pYSFReflector; works on any Linux host that can read the reflector log.
+Python 3.5+, standard library only (the optional picture tool `ysfimg.py` also needs Pillow). Written for a Raspberry Pi 3B+ running pYSFReflector; works on any Linux host that can read the reflector log.
 
 <table>
 <tr>
@@ -277,6 +277,24 @@ How it decides:
 - A callsign and radio ID pair is welcomed once per link, and not again within 1 hour, so a second radio under one callsign gets its own welcome. A `CHECK` is answered at most once per 30 seconds per radio.
 - `{count}` is the number of callsigns that polled in the last 60 seconds, the joining station and any bridge included.
 
+### 11. Sending a picture from the command line (optional)
+
+`src/ysfimg.py` takes any image, resizes it to 160x120 or 320x240 at low, medium or high quality, and sends it to a radio as a C4FM picture, as a client logged in under your own callsign and radio ID. It needs Pillow (`sudo apt install python3-pil`) and the other files of `src/` beside it. Replace `N0CALL` and `12345` with your own callsign and radio ID, and `M0RWV` and `EB4XU` with the radio's.
+
+1. Dry run: builds the picture, writes a preview JPEG and the frames to files, sends nothing. The time on air is printed.
+
+   ```
+   python3 ysfimg.py photo.jpg --size 160x120 --quality medium --save preview.jpg --call N0CALL --radio-id 12345 --to-call M0RWV --to-id EB4XU --dry out.jsonl
+   ```
+
+2. Send to one radio on the reflector's own machine:
+
+   ```
+   python3 ysfimg.py photo.jpg --size 160x120 --quality medium --live --host 127.0.0.1 --port 42002 --call N0CALL --radio-id 12345 --to-call M0RWV --to-id EB4XU --lat 54.25 --lon -0.40
+   ```
+
+`--size` is `160x120` (default) or `320x240`. `--quality` is `low`, `medium` (default) or `high`: about 2.5 to 6 KB at 160x120 and 6 to 17 KB at 320x240 for a typical photo, the range the radio's own LOW and HIGH settings produce. A 160x120 picture takes about 20 to 35 seconds on air, a 320x240 HIGH picture about 90 seconds; a longer picture is more likely to lose a frame on a weak link. `--gap` is the pause between the streams of a picture (default 1.5 s): receiving radios dropped pictures sent with 0.7 s or less. `--fit crop` (default) fills the picture and trims the edges, `--fit pad` keeps the whole image with black bars. EXIF data, including GPS, is not copied. If the last 1 KB chunk of the JPEG would be shorter than 300 bytes, the tool adds a JPEG comment of up to 300 bytes so it is never sent as one short block, a layout not seen from a real radio. `--lat` and `--lon` set the position the picture is sent from (default 0, 0). A picture to everyone on the reflector needs `--all`; without it `--to-call` and `--to-id` are required. Each run sends one picture, and only with `--live`. A picture sent to everyone with `--all` was received and displayed by two radios. A picture sent to one callsign has not been tested on a real radio.
+
 ### Upgrading
 
 ```
@@ -331,6 +349,7 @@ Keep your own `.service` files; only compare them with the ones in `systemd/`. R
 | `ysfcap.py` | Passive capture of the frames sent by one callsign to a JSON lines file |
 | `ysfdec.py` | Frame, FICH, data unit and record decoder (`--records`, `--ok`, `--selftest`) |
 | `ysfdiff.py` | Shows which bytes change between repeated captures |
+| `ysfimg.py` | Resizes an image to 160x120 or 320x240 at low, medium or high quality and sends it to a radio or to everyone (`--dry`, `--live`; needs Pillow) |
 | `ysfsend.py` | Builds and sends one text message, broadcast or directed (`--to-call`, `--to-id`), under your own callsign (`--check`, `--dry`, `--live`) |
 | `ysfpos.py` | Decodes and builds the APRS Mic-E position block |
 | `ysfgps.py` | Lists decoded positions in a capture and compares them with positions you set |
@@ -385,7 +404,7 @@ FT5D (sending and receiving, voice and text, News Station upload and download), 
 
 ## Responsible use
 
-Transmit only under your own callsign and licence conditions. `ysfsend.py` and `ysfnews.py` take the callsign and radio ID you give them: use your own. `ysfnews.py` sends messages automatically without an operator at the controls: check that your licence permits that before running it. Nothing here defeats encryption, signing or access control; none was found. Not affiliated with or endorsed by Yaesu Musen Co., Ltd. "Yaesu" and "System Fusion" are trademarks of their owners. No Yaesu firmware or confidential material was used; the formats were derived from the published C4FM air interface specification and from the author's own radios and reflector.
+Transmit only under your own callsign and licence conditions. `ysfsend.py`, `ysfimg.py` and `ysfnews.py` take the callsign and radio ID you give them: use your own. `ysfnews.py` sends messages automatically without an operator at the controls: check that your licence permits that before running it. Nothing here defeats encryption, signing or access control; none was found. Not affiliated with or endorsed by Yaesu Musen Co., Ltd. "Yaesu" and "System Fusion" are trademarks of their owners. No Yaesu firmware or confidential material was used; the formats were derived from the published C4FM air interface specification and from the author's own radios and reflector.
 
 ## Disclaimer of warranty and limitation of liability
 
@@ -394,7 +413,7 @@ THIS SOFTWARE AND DOCUMENTATION ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KI
 - **Use at your own risk.** You install, configure, run and expose this software entirely at your own risk. Back up your system first and test before relying on it.
 - **Observed behaviour, not a specification.** The format documentation describes what was observed on the author's equipment. It is not an official specification, may be incomplete or wrong, and may not hold for other radios, firmware versions or reflector software.
 - **No security guarantee.** The security notes describe design intent and the checks that were made. They are not a guarantee. Review the code and your configuration yourself before exposing any service to the internet. YSF has no authentication, so anything shown on the dashboard can be sent by anyone under any callsign.
-- **Automatic transmissions.** `ysfnews.py` and `ysfsend.py` transmit over the radio network. You alone are responsible for complying with the licence conditions and the rules that apply to you and to the network you connect to, including station identification, permitted content, third-party traffic and unattended or automatic operation.
+- **Automatic transmissions.** `ysfnews.py`, `ysfsend.py` and `ysfimg.py` transmit over the radio network. You alone are responsible for complying with the licence conditions and the rules that apply to you and to the network you connect to, including station identification, permitted content, third-party traffic and unattended or automatic operation.
 - **Data from users.** The software shows and stores callsigns, text and positions sent by other stations. You alone are responsible for moderating that content and for complying with privacy and data-protection law that applies to you.
 - **Not for safety-critical use.** Do not rely on this software for emergency communications or any situation where failure could endanger people or property.
 - **No support or obligation.** The author has no obligation to provide support, fixes or updates.
