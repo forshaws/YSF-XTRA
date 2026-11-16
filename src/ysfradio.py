@@ -251,7 +251,7 @@ a:hover{text-decoration:underline}
 .screen{--u:min(0.98vw,calc(var(--vh,1vh)*1.63));margin:auto;position:relative;width:calc(var(--u)*100);
 aspect-ratio:5/3;background:var(--ink);border:calc(var(--u)*.7) solid #1b1b1d;
 border-radius:calc(var(--u)*1.6);overflow:hidden;display:grid;
-grid-template-rows:7fr 25fr 6fr 7fr 5fr 40fr;
+grid-template-rows:7fr 22fr 9fr 6fr 7fr 5fr 28fr 6fr;
 box-shadow:0 0 calc(var(--u)*4) rgba(47,123,255,.18),inset 0 0 calc(var(--u)*6) rgba(0,0,0,.9)}
 .screen::after{content:"";position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;
 background:repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0,rgba(255,255,255,.035) 1px,transparent 1px,transparent 3px)}
@@ -270,15 +270,15 @@ padding:0 calc(var(--u)*1.6);border-bottom:1px solid #1d1d20}
 font-size:calc(var(--u)*14);color:var(--dim);transition:color 2s ease}
 .call.live{color:var(--white);text-shadow:0 0 calc(var(--u)*1.2) rgba(255,255,255,.35);transition:none}
 .call.old{color:var(--dark)}
-.rid{font-size:calc(var(--u)*2.4);font-weight:700;color:var(--blue);min-height:calc(var(--u)*3);white-space:nowrap}
+.rid{font-size:calc(var(--u)*2.4);font-weight:700;color:var(--blue);min-height:calc(var(--u)*2.6);line-height:1.1;white-space:nowrap}
 .call.mid{font-size:calc(var(--u)*11)}
 .call.small{font-size:calc(var(--u)*7.5)}
-.side{text-align:right}
+.side{text-align:right;align-self:center}
 .lamp{display:inline-block;font-weight:700;font-size:calc(var(--u)*2.6);padding:0 calc(var(--u)*1.2);
 border:1px solid #333;color:#444;border-radius:calc(var(--u)*.4)}
 .lamp.on{background:var(--red);border-color:var(--red);color:#fff;
 box-shadow:0 0 calc(var(--u)*1.6) var(--red)}
-.timer{font-size:calc(var(--u)*6);font-weight:700;margin-top:calc(var(--u)*.6);color:var(--white)}
+.timer{font-size:calc(var(--u)*5.4);font-weight:700;line-height:1.15;margin-top:calc(var(--u)*.4);color:var(--white)}
 .timer.idle{color:var(--dim)}
 .route{display:flex;align-items:center;padding:0 calc(var(--u)*1.6);
 font-size:calc(var(--u)*3.2);color:var(--white);white-space:nowrap;overflow:hidden}
@@ -294,8 +294,9 @@ letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;overflow:hidden
 .seg{flex:1;height:55%;background:#16181d}
 .seg.on{background:var(--white)}
 .seg.on.hi{background:var(--red)}
-.panels{display:grid;grid-template-columns:30fr 38fr 32fr;min-height:0}
-.panel{display:flex;flex-direction:column;padding:calc(var(--u)*1) calc(var(--u)*1.6) 0;
+.panels{display:block;min-height:0;overflow:hidden}
+.panel.off{display:none}
+.panel{height:100%;display:flex;flex-direction:column;padding:calc(var(--u)*1) calc(var(--u)*1.6) 0;
 border-right:1px solid #1d1d20;overflow:hidden;min-width:0;min-height:0}
 .panel:last-child{border-right:0}
 .panel h2{display:flex;justify-content:space-between;margin:0 0 calc(var(--u)*.8);
@@ -313,6 +314,8 @@ touch-action:pan-y;cursor:grab}
 gap:calc(var(--u)*1);font-size:calc(var(--u)*2.7);line-height:1.55}
 .g .k{color:var(--blue);font-weight:700}
 .g .v{text-align:right;color:var(--white)}
+.panel.sysp .g{max-width:calc(var(--u)*60)}
+.panel .rows{max-width:calc(var(--u)*70)}
 .bar{height:calc(var(--u)*1.5);background:#16181d}
 .bar i{display:block;height:100%;width:0;background:var(--white)}
 .bar i.hot{background:var(--red)}
@@ -322,9 +325,37 @@ gap:calc(var(--u)*1);font-size:calc(var(--u)*2.7);line-height:1.55}
 .rows[data-k="bac"] .r{display:grid;column-gap:calc(var(--u)*.6);grid-template-columns:calc(var(--u)*13.5) minmax(0,1fr) calc(var(--u)*6.5)}
 .rows[data-k="bacd"] .r{display:grid;column-gap:calc(var(--u)*.6);grid-template-columns:calc(var(--u)*8.5) minmax(0,1fr) calc(var(--u)*6.5) calc(var(--u)*10.5)}
 .rows[data-k="adb"] .b,.rows[data-k] .c,.rows[data-k] .d{text-align:right}
-.panels{grid-template-columns:31fr 40fr 29fr}
 .top>*{flex:0 0 auto}
 .top #nlinked{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.lvl{display:grid;grid-template-columns:8fr 70fr 22fr;align-items:center;padding:0 calc(var(--u)*1.6);
+border-bottom:1px solid #1d1d20;min-height:0}
+.lvl .lk{font-size:calc(var(--u)*2.4);font-weight:700;color:var(--blue)}
+.lvl .lm{display:flex;align-items:flex-end;gap:calc(var(--u)*1.6);width:60%;min-width:0}
+.lvl .lbx{flex:1;min-width:0;display:flex;flex-direction:column;gap:calc(var(--u)*.3)}
+.lvl .lt{display:flex;height:calc(var(--u)*1.5);border-bottom:1px solid #8a93a1;border-right:1px solid #8a93a1}
+.lvl .gt{flex:1;align-self:flex-end;height:45%;border-left:1px solid #8a93a1}
+.lvl .gt.m{height:100%;border-left-width:2px;border-left-color:var(--white)}
+.lvl .gt.hi{border-left-color:var(--blue)}
+.lvl .lb{display:flex;gap:calc(var(--u)*.25);height:calc(var(--u)*2.2)}
+.lvl .ls{flex:1;background:#16181d}
+.lvl .ls.on{background:#19d36b}
+.lvl .ls.on.a{background:#ffd35a}
+.lvl .ls.on.r{background:var(--red)}
+.lvl .ls.pk{background:var(--white)}
+.lvl .lv{flex:0 0 auto;min-width:calc(var(--u)*9);text-align:right;font-size:calc(var(--u)*2.8);font-weight:700;color:var(--white);white-space:nowrap;line-height:1}
+.lvl .lv.idle{color:var(--dim)}
+.lvl .lv.hot{color:var(--red)}
+.tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:calc(var(--u)*.6);padding:calc(var(--u)*.7) calc(var(--u)*1.6);
+background:#0b0c0f;border-top:1px solid #1d1d20;min-height:0}
+.tab{font:inherit;font-weight:700;font-size:calc(var(--u)*2.7);letter-spacing:.08em;color:var(--white);
+background:#1a1c22;border:1px solid #3a3f4a;border-radius:calc(var(--u)*.5);cursor:pointer;padding:0;min-width:0;
+box-shadow:inset 0 calc(var(--u)*-.3) 0 rgba(0,0,0,.45)}
+.tab:hover,.tab:focus-visible{background:#2a2f38;outline:0}
+.tab.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.tab.menu-t{background:#7d0c1d;border-color:#fff}
+.tab.menu-t:hover,.tab.menu-t:focus-visible{background:#fff;color:var(--red)}
+.tab.dis{color:#444;border-color:#26292f;cursor:default}
+
 .menubtn{font:inherit;font-weight:700;color:#fff;background:#7d0c1d;border:1px solid #fff;
 border-radius:calc(var(--u)*.5);padding:0 calc(var(--u)*1.4);cursor:pointer;letter-spacing:.1em;
 box-shadow:inset 0 calc(var(--u)*-.3) 0 rgba(0,0,0,.4)}
@@ -427,8 +458,9 @@ box-shadow:inset 0 calc(var(--u)*-.5) 0 rgba(0,0,0,.45)}
 @media (max-aspect-ratio:1/1){
 html,body{height:auto;min-height:100%}
 body{display:block;-webkit-text-size-adjust:100%;text-size-adjust:100%}
-.screen{--u:1.45vw;margin:0;width:100%;aspect-ratio:auto;min-height:100vh;border:0;border-radius:0;
-display:block;box-shadow:none}
+.screen{--u:1.45vw;margin:0;width:100%;aspect-ratio:auto;height:calc(var(--vh,1vh)*100);min-height:0;border:0;border-radius:0;
+display:flex;flex-direction:column;box-shadow:none}
+.screen>*{flex:none}
 .top{flex-wrap:wrap;row-gap:calc(var(--u)*.8);padding:calc(var(--u)*1.4) calc(var(--u)*1.6);
 font-size:calc(var(--u)*3)}
 .top .sp{flex:0 0 100%;height:0}
@@ -442,10 +474,17 @@ font-size:calc(var(--u)*3)}
 .refl span.n{display:none}
 .refl span.n.act{display:inline}
 .meter{height:calc(var(--u)*5)}
-.panels{display:block}
-.panel{height:calc(var(--u)*32);border-right:0;border-bottom:1px solid #1d1d20}
-.panel:last-child{height:auto;padding-bottom:calc(var(--u)*2)}
-.panels{display:block}
+.lvl{height:calc(var(--u)*11);padding:calc(var(--u)*1.4) calc(var(--u)*1.6)}
+.lvl .lm{width:100%}
+.lvl .lt{height:calc(var(--u)*2.2)}
+.lvl .lb{height:calc(var(--u)*3.4)}
+.lvl .lv{font-size:calc(var(--u)*3.8);min-width:calc(var(--u)*13)}
+.tabs{height:calc(var(--u)*10);padding:calc(var(--u)*1.2) calc(var(--u)*1.6)}
+.tab{font-size:calc(var(--u)*3)}
+.panels{flex:1 1 0;min-height:0;display:flex;overflow:hidden}
+.panel{flex:1;height:auto;min-height:0;border-right:0}
+.panel:last-child{padding-bottom:calc(var(--u)*1)}
+.panel.sysp{overflow-y:auto}
 .menu{position:fixed}
 .rdist{padding-left:calc(var(--u)*1)}
 .pad{grid-template-columns:repeat(3,calc(var(--u)*16))}
@@ -468,6 +507,10 @@ JS = r"""
   fit();
   window.addEventListener('resize', fit);
   window.addEventListener('orientationchange', function () { setTimeout(fit, 250); });
+  /* Safari reports a stale height while it is still laying out its toolbars: measure again after load and when the viewport changes */
+  window.addEventListener('load', function () { fit(); setTimeout(fit, 150); setTimeout(fit, 600); });
+  if (window.visualViewport) { window.visualViewport.addEventListener('resize', fit); }
+  setTimeout(fit, 100);
   if (window.visualViewport) { window.visualViewport.addEventListener('resize', fit); }
   var CALL_RE = /^[A-Z0-9]{1,3}[0-9][A-Z]{1,4}(\/[A-Z0-9]{1,4})?$/;
   function $(id) { return document.getElementById(id); }
@@ -1253,9 +1296,75 @@ JS = r"""
     closeGm();
     if (s0 >= 0) { gmFromMenu = 0; openMenu(); sel = s0; drawMenu(); }
   }
-  $('gmbtn').addEventListener('click', function () { openGm(); });
+  $('gmbtn').addEventListener('click', function () { if (this.className.indexOf('dis') < 0) { openGm(); } });
   $('gback').addEventListener('click', backGm);
   $('grange').addEventListener('click', function () { gmIdx = (gmIdx + 1) % GM_RANGES.length; store.set('range', String(gmIdx)); drawGm(); });
+
+  /* bottom tabs: one list at a time */
+  var TABS = ['linked', 'heard', 'sys'];
+  function setTab(k) {
+    if (TABS.indexOf(k) < 0) { k = 'linked'; }
+    store.set('tab', k);
+    TABS.forEach(function (n) {
+      $('p-' + n).className = 'panel' + (n === 'sys' ? ' sysp' : '') + (n === k ? '' : ' off');
+      $('t-' + n).className = 'tab' + (n === k ? ' on' : '');
+    });
+    arrows('linked', 'lkar'); arrows('heard', 'hdar');
+  }
+  TABS.forEach(function (n) { $('t-' + n).addEventListener('click', function () { setTab(n); this.blur(); }); });
+  setTab(store.get('tab', 'linked'));
+
+  /* voice level meter under the callsign (loudness from ysfmsgd.py --level-out) */
+  var LV = null, LVN = 40, lsegs = [], lvVal = 0, lvPeak = 0, lvPeakT = 0, lvBusy = false, lvLast = 0;
+  (function () {
+    var b = $('lvlbar');
+    for (var i = 0; i < LVN; i++) { var sp = document.createElement('span'); sp.className = 'ls'; b.appendChild(sp); lsegs.push(sp); }
+  })();
+  function lvlScale() {
+    var t = $('lvlscale'); clear(t);
+    for (var k = 0; k < LVN; k++) {
+      var sp = document.createElement('span');
+      sp.className = 'gt' + (k % 10 === 0 ? ' m' : '') + (k >= LVN * 0.6 ? ' hi' : '');
+      t.appendChild(sp);
+    }
+  }
+  function lvlPaint(txt) {
+    var on = Math.round(lvVal * LVN), pk = Math.min(LVN - 1, Math.round(lvPeak * LVN) - 1);
+    for (var i = 0; i < LVN; i++) {
+      var c = 'ls';
+      if (i < on) { c += ' on' + (i >= LVN * 0.85 ? ' r' : (i >= LVN * 0.6 ? ' a' : '')); }
+      else if (i === pk && lvPeak > 0.02) { c += ' pk'; }
+      if (lsegs[i].className !== c) { lsegs[i].className = c; }
+    }
+    var v = $('lvlval');
+    v.textContent = txt;
+    v.className = 'lv' + (txt === '-- dB' ? ' idle' : (lvVal > 0.85 ? ' hot' : ''));
+  }
+  function lvlPush(j) {
+    var now = Date.now(), span = LV.full - LV.floor;
+    var x = j ? Math.min(1, Math.max(0, (j.db - LV.floor) / span)) : 0;
+    var xp = j ? Math.min(1, Math.max(0, (j.pk - LV.floor) / span)) : 0;
+    lvVal = x > lvVal ? x : lvVal + (x - lvVal) * 0.45;
+    if (lvVal < 0.01) { lvVal = 0; }
+    if (xp >= lvPeak || now - lvPeakT > 1200) { lvPeak = Math.max(xp, lvVal); lvPeakT = now; }
+    lvlPaint(j ? Math.round(j.db) + ' dB' : '-- dB');
+  }
+  function lvlPoll() {
+    if (!LV || lvBusy) { return; }
+    var now = Date.now();
+    if (talkStart === null && lvVal === 0 && now - lvLast < 1000) { return; }
+    lvLast = now; lvBusy = true;
+    var x = new XMLHttpRequest();
+    x.open('GET', 'api/level', true);
+    x.onload = function () {
+      var j = null;
+      if (x.status === 200) { try { j = JSON.parse(x.responseText); } catch (e) {} }
+      lvlPush(j);
+    };
+    x.onloadend = function () { lvBusy = false; };
+    x.send();
+  }
+  setInterval(lvlPoll, 200);
 
   var nodeShown = null;
   function render(d) {
@@ -1352,7 +1461,9 @@ JS = r"""
     mailUpdate(d);
     picUpdate(d);
     newsUpdate(d);
-    $('gmbtn').className = 'menubtn gmk' + (d.aprs ? '' : ' hidden');
+    $('gmbtn').className = 'tab' + (d.aprs ? '' : ' dis');
+    if (d.lvl && (!LV || LV.floor !== d.lvl.floor || LV.full !== d.lvl.full)) { LV = d.lvl; lvlScale(); }
+    else if (!d.lvl) { LV = null; }
     if (gmOpen) { drawGm(); }
   }
   function tick() {
@@ -1394,22 +1505,24 @@ INDEX = """<!doctype html>
 <svg class="pin" viewBox="0 0 12 16" aria-hidden="true"><path fill="currentColor" d="M6 0C2.7 0 0 2.6 0 5.8 0 10 6 16 6 16s6-6 6-10.2C12 2.6 9.3 0 6 0zm0 8.2a2.4 2.4 0 1 1 0-4.8 2.4 2.4 0 0 1 0 4.8z"/></svg>
 <span id="locv"></span></a>
 <span class="sp"></span><span id="nlinked"></span><span id="clock"></span>
-<button id="menubtn" class="menubtn" type="button">MENU</button></div>
+</div>
 <div class="vfo"><div class="band">A</div><div id="call" class="call old">------</div>
 <div class="side"><div id="lamp" class="lamp">BUSY</div><div id="timer" class="timer idle">00:00</div><div id="rid" class="rid"></div></div></div>
-<div class="route"><b id="rlab">LAST</b><span id="dest"></span><span id="rdist" class="rdist"></span><button id="gmbtn" class="menubtn gmk hidden" type="button">RADAR</button></div>
+<div class="lvl"><span class="lk">LVL</span><div class="lm"><div class="lbx"><div id="lvlscale" class="lt"></div><div id="lvlbar" class="lb"></div></div><span id="lvlval" class="lv idle">-- dB</span></div><span></span></div>
+<div class="route"><b id="rlab">LAST</b><span id="dest"></span><span id="rdist" class="rdist"></span></div>
 <div class="refl"><span id="rname"></span><span id="mode" class="n">DIGITAL VOICE</span></div>
 <div id="meter" class="meter"></div>
 <div class="panels">
-<div class="panel"><h2><span>LINKED</span><span id="lkar" class="ar"></span></h2><div id="linked" class="rows"></div></div>
-<div class="panel"><h2><span>HEARD</span><span id="hdar" class="ar"></span></h2><div id="heard" class="rows"></div></div>
-<div class="panel"><h2><span>SYSTEM</span></h2>
+<div id="p-linked" class="panel"><h2><span>LINKED</span><span id="lkar" class="ar"></span></h2><div id="linked" class="rows"></div></div>
+<div id="p-heard" class="panel off"><h2><span>HEARD</span><span id="hdar" class="ar"></span></h2><div id="heard" class="rows"></div></div>
+<div id="p-sys" class="panel sysp off"><h2><span>SYSTEM</span></h2>
 <div class="g"><span class="k">CPU</span><div class="bar"><i id="cpub"></i></div><span id="cpuv" class="v">--</span></div>
 <div class="g"><span class="k">TMP</span><div class="bar"><i id="tmpb"></i></div><span id="tmpv" class="v">--</span></div>
 <div class="g"><span class="k">MEM</span><div class="bar"><i id="memb"></i></div><span id="memv" class="v">--</span></div>
 <div class="g"><span class="k">LOAD</span><span></span><span id="loadv" class="v">--</span></div>
 <div class="g"><span class="k">UP</span><span></span><span id="upv" class="v">--</span></div>
 </div></div>
+<div class="tabs"><button id="menubtn" class="tab menu-t" type="button">MENU</button><button id="t-linked" class="tab on" type="button">LINKED</button><button id="t-heard" class="tab" type="button">HEARD</button><button id="t-sys" class="tab" type="button">SYS</button><button id="gmbtn" class="tab dis" type="button">RADAR</button></div>
 <div id="menu" class="menu hidden"><div class="mh"><span id="mtitle">MENU</span><span id="mnode"></span></div>
 <div id="mbody" class="mb"></div><div id="mmsg" class="mmsg"></div>
 <div id="mf" class="mf"><button id="kback" class="key" type="button">BACK</button><span id="mpg" class="mpg"></span><button id="kup" class="key" type="button">&#9650;</button><button id="kdn" class="key" type="button">&#9660;</button><button id="ksel" class="key red" type="button">SELECT</button><button id="kfwd" class="key hidden" type="button">FWD &#9654;</button></div><div class="uprobe" id="uprobe"></div></div>
@@ -1488,7 +1601,11 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 d["news"] = self._msg_status("newsreader")
                 d["pics"] = self._msg_status("picreader")
                 d["act"] = _activity(args.activity_file)
+                d["lvl"] = {"floor": args.level_floor, "full": args.level_full} if args.levels else None
                 body = json.dumps(d).encode("utf-8")
+                self._send(200, "application/json", body, head_only)
+            elif path == "/api/level":
+                body = json.dumps(_level(args.level_file) if args.levels else None).encode("utf-8")
                 self._send(200, "application/json", body, head_only)
             elif path in ("/api/messages", "/api/news"):
                 rd = getattr(args, "msgreader" if path == "/api/messages" else "newsreader", None)
@@ -1728,6 +1845,20 @@ def _activity(path):
     return None
 
 
+def _level(path):
+    """The loudness ysfmsgd.py last wrote ({"db", "pk", "call"}), or None when nobody is talking.
+    Ignored when older than 1.2 seconds."""
+    try:
+        with open(path, "r") as f:
+            a = json.loads(f.read(512))
+        if (isinstance(a, dict) and isinstance(a.get("db"), (int, float)) and isinstance(a.get("pk"), (int, float))
+                and isinstance(a.get("t"), (int, float)) and 0 <= time.time() - a["t"] <= 1.2):
+            return {"db": a["db"], "pk": a["pk"], "call": str(a.get("call", ""))[:12]}
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def make_pin_cli(state_dir):
     import getpass
     path = os.path.join(state_dir, "pin")
@@ -1788,6 +1919,12 @@ def main():
                    help="show pictures kept by ysfmsgd.py and manage the sender whitelist (MENU > LOG > PICTURES)")
     p.add_argument("--activity-file", default="",
                    help="file written by ysfmsgd.py that marks picture/data transfers (default: <state-dir>/activity.json)")
+    p.add_argument("--levels", action="store_true",
+                   help="show the voice level meter under the callsign (needs ysfmsgd.py --level-out)")
+    p.add_argument("--level-file", default="",
+                   help="level file written by ysfmsgd.py (default: <state-dir>/level.json)")
+    p.add_argument("--level-floor", type=float, default=0.0, help="level shown as an empty meter, dB (default 0)")
+    p.add_argument("--level-full", type=float, default=40.0, help="level shown as a full meter, dB (default 40)")
     p.add_argument("--pictures-dir", default="",
                    help="picture folder written by ysfmsgd.py (default: <state-dir>/pictures)")
     p.add_argument("--pictures-allow", default="",
@@ -1812,6 +1949,10 @@ def main():
         args.newswriter = ysfmsgstore.MsgFile(npath)
     args.picreader = args.picallow = None
     args.activity_file = args.activity_file or os.path.join(args.state_dir, "activity.json")
+    args.level_file = args.level_file or os.path.join(args.state_dir, "level.json")
+    args.levels = bool(args.levels or args.level_file != os.path.join(args.state_dir, "level.json"))
+    if args.level_full <= args.level_floor + 1:
+        raise SystemExit("--level-full must be above --level-floor")
     if args.pictures or args.pictures_dir:
         args.picreader = ysfpic.PicFile(args.pictures_dir or os.path.join(args.state_dir, "pictures"))
         args.picallow = ysfpic.Allow(args.pictures_allow or os.path.join(args.state_dir, "picture-allow.json"))

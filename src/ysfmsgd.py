@@ -129,6 +129,60 @@ class Activity(object):
             self._write("", "", now)
 
 
+class LevelOut(object):
+    """Loudness of the voice being received, for the dashboard's level meter. Reads the vocoder gain
+    out of each V/D type 2 voice frame (ysflevel.py) and rewrites one small file about five times a
+    second while a station talks; a stream's end writes an idle record. Nothing is kept or logged and
+    no audio is decoded. The dashboard ignores the file when it is more than a second old."""
+
+    EVERY = 0.2
+
+    def __init__(self, path):
+        import ysflevel
+        self.path = path
+        self.lv = ysflevel.Levels()
+        self.sum = 0.0
+        self.n = 0
+        self.pk = None
+        self.t = 0.0
+        self.idle = True
+        self.failed = False
+
+    def _write(self, text):
+        try:
+            tmp = self.path + ".tmp"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+            with os.fdopen(fd, "w") as f:
+                f.write(text)
+            os.replace(tmp, self.path)
+        except OSError as e:
+            if not self.failed:
+                self.failed = True
+                sys.stderr.write("ysfmsgd: cannot write %s: %s\n" % (self.path, e))
+                sys.stderr.flush()
+
+    def feed(self, key, bits, fi, now):
+        if fi == 2:                          # terminator frame: the stream is over
+            if not self.idle:
+                self.idle = True
+                self.sum, self.n, self.pk = 0.0, 0, None
+                self._write('{"t": %.2f, "call": "", "db": null, "pk": null}' % now)
+            return
+        if fi != 1:
+            return
+        for db, kind in self.lv.channels(key, bits, now):
+            if db is not None and kind != "tone":
+                self.sum += db
+                self.n += 1
+                self.pk = db if self.pk is None else max(self.pk, db)
+        if self.n and now - self.t >= self.EVERY:
+            call = "".join(c for c in key[1] if c.isalnum() or c in "/-")[:12]
+            self._write('{"t": %.2f, "call": "%s", "db": %.1f, "pk": %.1f}'
+                        % (now, call, self.sum / self.n, self.pk))
+            self.t, self.idle = now, False
+            self.sum, self.n, self.pk = 0.0, 0, None
+
+
 def from_this_machine(frame):
     """True for a packet sent from the reflector's own machine (loopback, or source = destination)."""
     ip = frame[14:34]
@@ -142,8 +196,9 @@ def field(b):
 class Decoder(object):
     """Turns YSFD packets into stored messages."""
 
-    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None, act=None, picreq=None, wel=None):
+    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None, act=None, picreq=None, wel=None, lvl=None):
         self.store = store
+        self.lvl = lvl                      # LevelOut or None
         self.pics = pics                    # ysfpic.PicRx or None
         self.act = act                      # Activity or None
         self.picreq = picreq                # NewsQueue for News Station picture downloads, or None
@@ -194,6 +249,8 @@ class Decoder(object):
         if self.wel is not None:
             self.wel.traffic(gw, src, self.local, now)
         f = self.fich(frame[5:30])
+        if f and f["DT"] == 2 and self.lvl is not None:
+            self.lvl.feed((gw, src), y.bytes_to_bits(frame), f["FI"], now)
         if f and f["DT"] == 2 and (self.pos is not None or self.wel is not None):
             return self.voice(gw, src, f, frame, now)
         if not f or f["DT"] != 1:
@@ -446,6 +503,9 @@ def main():
     ap.add_argument("--pictures-days", type=int, default=7, help="drop pictures older than this")
     ap.add_argument("--activity-out", default="/var/lib/ysfradio/activity.json",
                     help="file telling the dashboard a picture or data transfer is in progress (empty = off)")
+    ap.add_argument("--level-out", default="",
+                    help="write the loudness of the voice being received to this file for the dashboard's "
+                         "level meter (e.g. /var/lib/ysfradio/level.json); off by default")
     ap.add_argument("--welcome-out", default="",
                     help="queue file for welcome messages and CHECK replies, read by ysfnews.py (empty = off)")
     ap.add_argument("--welcome-self", default="",
@@ -481,7 +541,8 @@ def main():
         wel.log = lambda t: (sys.stderr.write("ysfmsgd: %s\n" % t), sys.stderr.flush())
     dec = Decoder(ysfmsgstore.MsgFile(a.out, max(1, a.keep_days)), a.per_hour, pos, news,
                   board, a.board_room_id, a.board_per_hour, pics,
-                  Activity(a.activity_out) if a.activity_out else None, picreq, wel)
+                  Activity(a.activity_out) if a.activity_out else None, picreq, wel,
+                  LevelOut(a.level_out) if a.level_out else None)
     signal.signal(signal.SIGTERM, lambda *x: sys.exit(0))
     sys.stderr.write("ysfmsgd: watching UDP %d, writing %s\n" % (a.port, a.out))
     sys.stderr.flush()
