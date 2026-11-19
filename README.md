@@ -220,6 +220,8 @@ The bottom tab bar has MENU, LINKED, HEARD, SYS, SCOPE and RADAR (two rows of th
 
 **SCOPE (voice spectrum).** A 3D waterfall of the voice itself, 0 to 4 kHz, newest line at the front. It needs `--levels` on `ysfradio.py` and `--level-out` on `ysfmsgd.py`, and works for V/D type 2 voice only. It is drawn from the vocoder's own spectral parameters (`src/ysfspec.py`, tables in `src/ysfspec_tab.py`, decoding steps after mbelib, ISC licence); no audio is decoded or kept. The picture is relative loudness of the voice, not of the radio signal. Nothing is drawn or fetched while another tab is showing. `python3 ysfspec.py --replay capture.jsonl` prints the numbers.
 
+**MON (listen in the browser).** The MON button plays the reflector's voice in the browser. While it is on the button is blue, and the top bar shows a speaker icon with the number of listeners. `ysfmsgd.py` sends the vocoder bits of each V/D type 2 voice packet (about 350 bytes a second) to a local socket, `<state-dir>/monitor.sock`, which `ysfradio.py` owns; it needs `--level-out` on `ysfmsgd.py` (the socket is put next to that file) or `--monitor-out PATH` there, and no change to the units. `ysfradio.py` passes the packets unchanged to every open `/api/monitor` stream, and `src/ysfmon.js` in the browser decodes them to 8 kHz speech with a port of the AMBE+2 decoder in mbelib (ISC licence) and plays them with Web Audio. The Pi does no audio work: a listener costs one open connection and the bytes above. Audio starts when MON is pressed (browsers require that). Voice full rate (DT=3) is not decoded. Limits: MENU > MON LIMIT (admin PIN) cycles OFF, 5, 10, 20, 50 and is kept in `<state-dir>/settings.json`; `--monitors N` sets the starting value (default 10); at most 3 streams per address; lowering the limit drops the newest listeners. `--no-monitor` turns the feature off, and it is also off when `ysfmon.js` is not beside `ysfradio.py`. A reverse proxy in front of the dashboard must not buffer `/api/monitor` (`proxy_buffering off` in nginx; the response also sends `X-Accel-Buffering: no`). Changes are written to the journal: `journalctl -u ysfradio | grep AUDIT`.
+
 ### 8. DMR X-link toggle (optional)
 
 Only for a reflector bridged to DMR with MMDVM_Bridge. See `docs/README-menu.md`.
@@ -404,6 +406,8 @@ Keep your own `.service` files; only compare them with the ones in `systemd/`. R
 | `/api/news` | JSON: the News Station uploads, newest first (`--news`) |
 | `/api/pictures` | JSON: the kept pictures, newest first (`--pictures`) |
 | `/pic/<id>.jpg` | A kept picture (`--pictures`) |
+| `/api/monitor` | MON voice stream: an open response of vocoder packets, limited by MON LIMIT (`--monitors`) |
+| `/mon.js` | The MON decoder and player |
 | `/healthz` | `ok` |
 
 Admin actions (DMR toggle, `POST /api/delete` for messages, news items and pictures, `POST /api/picallow` for the picture sender whitelist) are POST requests behind the PIN, a session cookie and a CSRF header: see `docs/README-menu.md` and `docs/README-messages.md`.

@@ -209,6 +209,46 @@ class LevelOut(object):
             self.sum, self.n, self.pk = 0.0, 0, None
 
 
+class MonitorOut(object):
+    """Hands each V/D type 2 voice packet to the dashboard's MON listeners. Sends the 49 vocoder bits of
+    its five voice frames (35 bytes) as one datagram on a local socket owned by ysfradio.py; nothing is
+    decoded, kept or logged here. If ysfradio is not running the datagrams are dropped."""
+
+    def __init__(self, path):
+        import ysflevel
+        self.vb = ysflevel.vocoder_bits
+        self.path = path
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        self.sock.setblocking(False)
+        self.cur = None
+        self.t = 0.0
+
+    def _send(self, data):
+        try:
+            self.sock.sendto(data, self.path)
+        except OSError:
+            pass
+
+    def feed(self, key, bits, fi, now):
+        if fi == 2:                          # terminator frame: the stream is over
+            if self.cur is not None:
+                self.cur = None
+                self._send(b"\x02")
+            return
+        if fi != 1:
+            return
+        if key != self.cur or now - self.t > 1.0:
+            self._send(b"\x02")             # a new talker: the listeners start their decoder afresh
+        self.cur, self.t = key, now
+        out = bytearray(b"\x01")
+        for j in range(5):
+            v = 0
+            for b in self.vb(bits, j):
+                v = (v << 1) | b
+            out += (v << 7).to_bytes(7, "big")
+        self._send(bytes(out))
+
+
 def from_this_machine(frame):
     """True for a packet sent from the reflector's own machine (loopback, or source = destination)."""
     ip = frame[14:34]
@@ -222,9 +262,10 @@ def field(b):
 class Decoder(object):
     """Turns YSFD packets into stored messages."""
 
-    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None, act=None, picreq=None, wel=None, lvl=None):
+    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None, act=None, picreq=None, wel=None, lvl=None, mon=None):
         self.store = store
         self.lvl = lvl                      # LevelOut or None
+        self.mon = mon                      # MonitorOut or None
         self.pics = pics                    # ysfpic.PicRx or None
         self.act = act                      # Activity or None
         self.picreq = picreq                # NewsQueue for News Station picture downloads, or None
@@ -277,6 +318,8 @@ class Decoder(object):
         f = self.fich(frame[5:30])
         if f and f["DT"] == 2 and self.lvl is not None:
             self.lvl.feed((gw, src), y.bytes_to_bits(frame), f["FI"], now)
+        if f and f["DT"] == 2 and self.mon is not None:
+            self.mon.feed((gw, src), y.bytes_to_bits(frame), f["FI"], now)
         if f and f["DT"] == 2 and (self.pos is not None or self.wel is not None):
             return self.voice(gw, src, f, frame, now)
         if not f or f["DT"] != 1:
@@ -532,6 +575,9 @@ def main():
     ap.add_argument("--level-out", default="",
                     help="write the loudness of the voice being received to this file for the dashboard's "
                          "level meter (e.g. /var/lib/ysfradio/level.json); off by default")
+    ap.add_argument("--monitor-out", default="",
+                    help="local socket the dashboard's MON button listens on (default: monitor.sock next to "
+                         "--level-out; 'off' = do not send voice to the dashboard)")
     ap.add_argument("--welcome-out", default="",
                     help="queue file for welcome messages and CHECK replies, read by ysfnews.py (empty = off)")
     ap.add_argument("--welcome-self", default="",
@@ -565,10 +611,16 @@ def main():
         wel = ysfwelcome.Welcome(ysfmsgstore.NewsQueue(a.welcome_out), max(0, a.welcome_quiet),
                                  max(0, a.welcome_wait), self_call=a.welcome_self)
         wel.log = lambda t: (sys.stderr.write("ysfmsgd: %s\n" % t), sys.stderr.flush())
+    mon_path = a.monitor_out
+    if mon_path == "":
+        mon_path = os.path.join(os.path.dirname(a.level_out), "monitor.sock") if a.level_out else ""
+    elif mon_path == "off":
+        mon_path = ""
     dec = Decoder(ysfmsgstore.MsgFile(a.out, max(1, a.keep_days)), a.per_hour, pos, news,
                   board, a.board_room_id, a.board_per_hour, pics,
                   Activity(a.activity_out) if a.activity_out else None, picreq, wel,
-                  LevelOut(a.level_out) if a.level_out else None)
+                  LevelOut(a.level_out) if a.level_out else None,
+                  MonitorOut(mon_path) if mon_path else None)
     signal.signal(signal.SIGTERM, lambda *x: sys.exit(0))
     sys.stderr.write("ysfmsgd: watching UDP %d, writing %s\n" % (a.port, a.out))
     sys.stderr.flush()

@@ -26,6 +26,7 @@ from urllib.parse import urlparse
 
 import ysfdash
 import ysfhist
+import ysfmon
 import ysfmenu
 import ysfmsgstore
 import ysfpic
@@ -262,6 +263,8 @@ background:var(--red);color:#fff;font-weight:700;font-size:calc(var(--u)*2.3);wh
 .badge{background:#fff;color:var(--red);padding:0 calc(var(--u)*1.2);border-radius:calc(var(--u)*.4)}
 .badge.blue{background:var(--blue);color:#fff}
 .badge.off{background:#222;color:#888}
+.badge.mon{display:inline-flex;align-items:center;gap:calc(var(--u)*.6)}
+.spk{width:calc(var(--u)*2.8);height:calc(var(--u)*2)}
 .loc{display:inline-flex;align-items:center;gap:calc(var(--u)*.6)}
 .pin{width:calc(var(--u)*1.7);height:calc(var(--u)*2.3)}
 .vfo{display:grid;grid-template-columns:8fr 70fr 22fr;align-items:center;
@@ -351,7 +354,7 @@ border-bottom:1px solid #1d1d20;min-height:0}
 .lvl .lv{flex:0 0 auto;min-width:calc(var(--u)*9);text-align:right;font-size:calc(var(--u)*2.8);font-weight:700;color:var(--white);white-space:nowrap;line-height:1}
 .lvl .lv.idle{color:var(--dim)}
 .lvl .lv.hot{color:var(--red)}
-.tabs{display:grid;grid-template-rows:minmax(0,1fr);grid-template-columns:repeat(6,minmax(0,1fr));gap:calc(var(--u)*.6);padding:calc(var(--u)*.45) calc(var(--u)*1.6);
+.tabs{display:grid;grid-template-rows:minmax(0,1fr);grid-template-columns:repeat(7,minmax(0,1fr));gap:calc(var(--u)*.6);padding:calc(var(--u)*.45) calc(var(--u)*1.6);
 background:#0b0c0f;border-top:1px solid #1d1d20;min-height:0}
 .tab{overflow:hidden;font:inherit;line-height:1;font-weight:700;font-size:calc(var(--u)*2.7);letter-spacing:.08em;color:var(--white);
 background:#1a1c22;border:1px solid #3a3f4a;border-radius:calc(var(--u)*.5);cursor:pointer;padding:0;min-width:0;
@@ -484,7 +487,7 @@ font-size:calc(var(--u)*3)}
 .lvl .lt{height:calc(var(--u)*2.2)}
 .lvl .lb{height:calc(var(--u)*3.4)}
 .lvl .lv{font-size:calc(var(--u)*3.8);min-width:calc(var(--u)*13)}
-.tabs{height:calc(var(--u)*19.5);grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));padding:calc(var(--u)*1.2) calc(var(--u)*1.6)}
+.tabs{height:calc(var(--u)*19.5);grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));padding:calc(var(--u)*1.2) calc(var(--u)*1.6)}
 .tab{font-size:calc(var(--u)*3)}
 .panels{flex:1 1 0;min-height:0;display:flex;overflow:hidden}
 .panel{flex:1;height:auto;min-height:0;border-right:0}
@@ -868,6 +871,7 @@ JS = r"""
     l.push({k: 'log', label: 'LOG', val: (d.msg || d.news || d.pics) ? (unreadCount() ? unreadCount() + ' NEW' : 'OPEN') : 'N/A', dis: !(d.msg || d.news || d.pics)});
     l.push({k: 'aprs', label: 'APRS POSITIONS', val: d.aprs ? (d.aprs.connected ? 'LIVE ' : 'OFFLINE ') + d.aprs.known : 'N/A', dis: true});
     l.push({k: 'allow', label: 'PIC SENDERS', val: d.pics ? (admin ? (allowLoaded ? String(allowList.length) : '...') : 'ADMIN') : 'N/A', dis: !d.pics});
+    l.push({k: 'monmax', label: 'MON LIMIT', val: d.mon ? (d.mon.max > 0 ? d.mon.max + ' MAX' : 'OFF') : 'N/A', dis: !d.mon});
     l.push({k: 'tot', label: 'TIME LIMIT', val: FULL > 0 ? (FULL % 60 === 0 ? FULL / 60 + ' MIN' : FULL + ' SEC') : 'OFF'});
     l.push({k: 'admin', label: 'ADMIN', val: admin ? 'LOGOUT' : (d.auth ? 'LOGIN' : 'NO PIN SET'), dis: !admin && !d.auth});
     l.push({k: 'about', label: 'ABOUT', val: ''});
@@ -1133,6 +1137,18 @@ JS = r"""
         if (!d.auth) { msg = 'ADMIN PIN NOT SET ON SERVER'; }
         else { view = 'pin'; pin = ''; wantDmr = false; wantAllow = true; }
       } else { view = 'allow'; sel = 0; loadAllow(); }
+    } else if (it.k === 'monmax') {
+      if (!admin) { msg = d.auth ? 'LOGIN AS ADMIN TO CHANGE THE MON LIMIT' : 'ADMIN PIN NOT SET ON SERVER'; }
+      else {
+        var cm = d.mon ? d.mon.max : 0, nm = 0;
+        [5, 10, 20, 50].forEach(function (v) { if (nm === 0 && v > cm) { nm = v; } });
+        post('api/settings', {mon: nm}, function (code, j) {
+          if (code === 200 && typeof j.mon === 'number') { if (last && last.mon) { last.mon.max = j.mon; } msg = ''; }
+          else if (code === 401) { admin = null; msg = 'SESSION EXPIRED'; }
+          else { msg = 'COULD NOT SAVE'; }
+          if (menuOpen) { drawMenu(); }
+        });
+      }
     } else if (it.k === 'tot') {
       if (!admin) { msg = d.auth ? 'LOGIN AS ADMIN TO CHANGE THE TIME LIMIT' : 'ADMIN PIN NOT SET ON SERVER'; }
       else {
@@ -1366,6 +1382,53 @@ JS = r"""
       if (last) { paintLast(last); arrows('heard', 'hdar'); }
     }
   });
+  /* MON: listen to the reflector. ysfmon.js (decoder and player) is fetched the first time it is used. */
+  var monP = null, monOn = false, monTry = 0, monNote = '', monNoteT = 0, monRetry = 0;
+  function monAvail() { return !!(last && last.mon && last.mon.max > 0); }
+  function monPaint() {
+    var b = $('monbtn'), c = 'tab' + (monOn ? ' on' : '') + (monOn || monAvail() ? '' : ' dis'), t = 'MON';
+    if (monNote && Date.now() < monNoteT) { t = monNote; }
+    if (b.className !== c) { b.className = c; }
+    if (b.textContent !== t) { b.textContent = t; }
+    var d = last, mb = $('monb');
+    if (!d || !d.mon) { mb.className = 'badge off mon hidden'; return; }
+    var n = d.mon.n || 0, cls = 'badge mon' + (n > 0 ? ' blue' : ' off');
+    if (mb.className !== cls) { mb.className = cls; }
+    $('monn').textContent = String(n);
+    mb.title = n + (n === 1 ? ' listener' : ' listeners') + ' on MON';
+  }
+  function monSay(t) { monNote = t; monNoteT = Date.now() + 3000; monPaint(); setTimeout(monPaint, 3100); }
+  function monStop() {
+    monOn = false; clearTimeout(monRetry);
+    if (monP) { monP.stop(); }
+    monPaint();
+  }
+  function monConnect() {
+    monP.start('api/monitor', function (st) {
+      if (!monOn) { return; }
+      if (st === 'ON') { monTry = 0; monPaint(); }
+      else if (st === 'FULL') { monStop(); monSay('FULL'); }
+      else if (st === 'END' || st === 'ERROR') {
+        if (++monTry > 20) { monStop(); monSay('ERR'); return; }
+        monRetry = setTimeout(function () { if (monOn) { monConnect(); } }, 3000);
+      } else { monStop(); monSay('N/A'); }
+    });
+  }
+  function monStart() {
+    function go() {
+      if (!monP) { monP = new window.YSFMon.Player(); }
+      monOn = true; monTry = 0; monPaint(); monConnect();
+    }
+    if (window.YSFMon) { go(); return; }
+    var s = document.createElement('script');
+    s.src = 'mon.js'; s.onload = go; s.onerror = function () { monSay('ERR'); };
+    document.head.appendChild(s);
+  }
+  $('monbtn').addEventListener('click', function () {
+    this.blur();
+    if (monOn) { monStop(); } else if (monAvail()) { monStart(); }
+  });
+
   var TABS = ['linked', 'heard', 'sys', 'scope'], curTab = 'linked';
   function scopeOk() { return !!(last && last.lvl); }
   function paintTabs() {
@@ -1766,6 +1829,7 @@ JS = r"""
     picUpdate(d);
     newsUpdate(d);
     $('gmbtn').className = 'tab' + (d.aprs ? '' : ' dis');
+    monPaint();
     paintTabs();
     if (curTab === 'scope' && !d.lvl) { setTab('linked'); }
     if (d.lvl && (!LV || LV.floor !== d.lvl.floor || LV.full !== d.lvl.full)) { LV = d.lvl; lvlScale(); }
@@ -1804,6 +1868,7 @@ INDEX = """<!doctype html>
 <body>
 <div class="screen">
 <div class="top"><span class="badge">YSF</span><span id="link" class="badge off">NO LOG</span><span id="dmr" class="badge off hidden">DMR</span>
+<span id="monb" class="badge off mon hidden" title="Listeners on MON"><svg class="spk" viewBox="0 0 20 14" aria-hidden="true"><path d="M1 4.5h3.5L9 1v12L4.5 9.5H1z" fill="currentColor"/><path d="M12 4.2a3.6 3.6 0 0 1 0 5.6M14.6 2a6.6 6.6 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span id="monn">0</span></span>
 <button id="mail" class="badge mailb hidden" type="button" title="New messages" aria-label="New messages"><svg class="env" viewBox="0 0 20 14" aria-hidden="true"><rect x="1" y="1" width="18" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><polyline points="1.5,2 10,8 18.5,2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span id="mailn"></span></button>
 <button id="picb" class="badge mailb hidden" type="button" title="New pictures" aria-label="New pictures"><svg class="env" viewBox="0 0 20 14" aria-hidden="true"><rect x="1" y="1" width="18" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><polyline points="3,11 8,6 11,9 14,5.5 17,11" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="14.5" cy="4" r="1.2" fill="currentColor"/></svg><span id="picn"></span></button>
 <span id="node"></span>
@@ -1828,7 +1893,7 @@ INDEX = """<!doctype html>
 <div class="g"><span class="k">LOAD</span><span></span><span id="loadv" class="v">--</span></div>
 <div class="g"><span class="k">UP</span><span></span><span id="upv" class="v">--</span></div>
 </div></div>
-<div class="tabs"><button id="menubtn" class="tab menu-t" type="button">MENU</button><button id="t-linked" class="tab on" type="button">LINKED</button><button id="t-heard" class="tab" type="button">HEARD</button><button id="t-sys" class="tab" type="button">SYS</button><button id="t-scope" class="tab dis" type="button">SCOPE</button><button id="gmbtn" class="tab dis" type="button">RADAR</button></div>
+<div class="tabs"><button id="menubtn" class="tab menu-t" type="button">MENU</button><button id="t-linked" class="tab on" type="button">LINKED</button><button id="t-heard" class="tab" type="button">HEARD</button><button id="t-sys" class="tab" type="button">SYS</button><button id="t-scope" class="tab dis" type="button">SCOPE</button><button id="gmbtn" class="tab dis" type="button">RADAR</button><button id="monbtn" class="tab dis" type="button">MON</button></div>
 <div id="menu" class="menu hidden"><div class="mh"><span id="mtitle">MENU</span><span id="mnode"></span></div>
 <div id="mbody" class="mb"></div><div id="mmsg" class="mmsg"></div>
 <div id="mf" class="mf"><button id="kback" class="key" type="button">BACK</button><span id="mpg" class="mpg"></span><button id="kup" class="key" type="button">&#9650;</button><button id="kdn" class="key" type="button">&#9660;</button><button id="ksel" class="key red" type="button">SELECT</button><button id="kfwd" class="key hidden" type="button">FWD &#9654;</button></div><div class="uprobe" id="uprobe"></div></div>
@@ -1895,6 +1960,10 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
             elif path == "/app.js":
                 self._send(200, "application/javascript; charset=utf-8",
                            JS.encode("utf-8"), head_only)
+            elif path == "/mon.js" and getattr(args, "mon_js", None):
+                self._send(200, "application/javascript; charset=utf-8", args.mon_js, head_only)
+            elif path == "/api/monitor" and getattr(args, "mon", None) is not None and not head_only:
+                self._monitor()
             elif path == "/api/status":
                 d = state.snapshot(False, args.name)
                 d["system"] = stats.snapshot()
@@ -1908,6 +1977,8 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 d["pics"] = self._msg_status("picreader")
                 d["act"] = _activity(args.activity_file)
                 d["hist"] = getattr(args, "hist", None) is not None
+                d["mon"] = ({"n": args.mon.count(), "max": args.mon_max}
+                            if getattr(args, "mon", None) is not None else None)
                 d["lvl"] = {"floor": args.level_floor, "full": args.level_full} if args.levels else None
                 body = json.dumps(d).encode("utf-8")
                 self._send(200, "application/json", body, head_only)
@@ -1993,6 +2064,30 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                         if v and (a is None or v[2] >= a[2]):
                             d["pos"][c] = [round(v[0], 2), round(v[1], 2)]
 
+        def _monitor(self):
+            """One MON listener: an open response that carries voice packets until the client leaves."""
+            mon = args.mon
+            lid = mon.join(self.client_address[0])
+            if lid is None:
+                return self._send(503, "text/plain; charset=utf-8", b"monitor limit reached")
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Cache-Control", "no-store, no-transform")
+                self.send_header("X-Accel-Buffering", "no")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Content-Security-Policy", CSP)
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(b"\x00")
+                for rec in mon.records(lid):
+                    self.wfile.write(rec)
+            except (OSError, ValueError):
+                pass
+            finally:
+                mon.leave(lid)
+                self.close_connection = True
+
         def _json(self, code, obj, extra=None):
             self._send(code, "application/json", json.dumps(obj).encode("utf-8"), False, extra)
 
@@ -2053,16 +2148,31 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 auth.logout(token)
                 return self._json(200, {"ok": True}, self._cookie("", 0))
             if path == "/api/settings":
-                tot = obj.get("tot")
-                if not isinstance(tot, int) or isinstance(tot, bool) or not (tot == 0 or 10 <= tot <= 600):
+                cur = load_settings(args.settings_file)
+                if "tot" in obj:
+                    tot = obj.get("tot")
+                    if not isinstance(tot, int) or isinstance(tot, bool) or not (tot == 0 or 10 <= tot <= 600):
+                        return self._json(400, {"error": "bad value"})
+                    cur["tot"] = tot
+                elif "mon" in obj and args.mon is not None:
+                    mon = obj.get("mon")
+                    if not isinstance(mon, int) or isinstance(mon, bool) or not (0 <= mon <= ysfmon.MAX_LISTENERS):
+                        return self._json(400, {"error": "bad value"})
+                    cur["mon"] = mon
+                else:
                     return self._json(400, {"error": "bad value"})
                 try:
-                    save_settings(args.settings_file, {"tot": tot})
+                    save_settings(args.settings_file, cur)
                 except OSError:
                     return self._json(500, {"error": "cannot write"})
-                args.tot = tot
-                audit(self, "time limit set to %d" % tot)
-                return self._json(200, {"ok": True, "tot": tot})
+                if "tot" in obj:
+                    args.tot = cur["tot"]
+                    audit(self, "time limit set to %d" % args.tot)
+                else:
+                    args.mon_max = cur["mon"]
+                    args.mon.set_max(args.mon_max)
+                    audit(self, "monitor limit set to %d" % args.mon_max)
+                return self._json(200, {"ok": True, "tot": args.tot, "mon": args.mon_max})
             if path == "/api/delete":
                 store = {"msg": getattr(args, "msgwriter", None),
                          "news": getattr(args, "newswriter", None),
@@ -2198,16 +2308,20 @@ def _level(path):
 
 
 def load_settings(path):
-    """Settings the admin changed from the menu ({"tot": seconds}); {} when none are saved."""
+    """Settings the admin changed from the menu ({"tot": seconds, "mon": listeners}); {} when none are saved."""
+    out = {}
     try:
         with open(path, "r") as f:
             a = json.loads(f.read(512))
-        t = a.get("tot") if isinstance(a, dict) else None
-        if isinstance(t, int) and not isinstance(t, bool) and (t == 0 or 10 <= t <= 600):
-            return {"tot": t}
+        if isinstance(a, dict):
+            t, m = a.get("tot"), a.get("mon")
+            if isinstance(t, int) and not isinstance(t, bool) and (t == 0 or 10 <= t <= 600):
+                out["tot"] = t
+            if isinstance(m, int) and not isinstance(m, bool) and 0 <= m <= ysfmon.MAX_LISTENERS:
+                out["mon"] = m
     except (OSError, ValueError):
         pass
-    return {}
+    return out
 
 
 def save_settings(path, d):
@@ -2292,6 +2406,14 @@ def main():
                    help="show pictures kept by ysfmsgd.py and manage the sender whitelist (MENU > LOG > PICTURES)")
     p.add_argument("--activity-file", default="",
                    help="file written by ysfmsgd.py that marks picture/data transfers (default: <state-dir>/activity.json)")
+    p.add_argument("--monitors", type=int, default=10, metavar="N",
+                   help="most listeners the MON button allows at once (default 10, 0 = off); the admin can change "
+                        "it from the menu (MON LIMIT) and that choice is kept in <state-dir>/settings.json")
+    p.add_argument("--no-monitor", action="store_true",
+                   help="turn off the MON button (needs ysfmon.js beside this file and --level-out on ysfmsgd.py "
+                        "or --monitor-out there)")
+    p.add_argument("--monitor-sock", default="",
+                   help="local socket ysfmsgd.py sends voice to (default: <state-dir>/monitor.sock)")
     p.add_argument("--no-history", action="store_true",
                    help="turn off the HEARD tab's ALL and ACTIVE lists (they are built from the reflector logs "
                         "and kept in <state-dir>/history.json)")
@@ -2385,6 +2507,21 @@ def main():
             t.daemon = True
             t.start()
     menu = Menu(auth, bridge, aprs)
+    args.mon, args.mon_js = None, None
+    args.mon_max = max(0, min(ysfmon.MAX_LISTENERS, args.monitors))
+    args.mon_max = load_settings(args.settings_file).get("mon", args.mon_max)
+    js_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ysfmon.js")
+    if not args.no_monitor:
+        try:
+            with open(js_path, "rb") as f:
+                args.mon_js = f.read()
+            args.mon = ysfmon.Monitor(args.monitor_sock or os.path.join(args.state_dir, "monitor.sock"), args.mon_max)
+            t = threading.Thread(target=args.mon.run, args=(stop,))
+            t.daemon = True
+            t.start()
+        except OSError as e:
+            sys.stderr.write("ysfradio: MON is off (%s)\n" % e)
+            args.mon_js = None
     args.hist = None
     if not args.no_history:
         args.hist = ysfhist.History(args.history_file or os.path.join(args.state_dir, "history.json"),
