@@ -53,7 +53,7 @@ This gets the dashboard running first, then adds the optional parts one at a tim
 | Reflector name on the banner | `ysfradio.service`: `--name` | `"My YSF Reflector"` |
 | Your locator, for distance and RADAR | `ysfradio.service`: `--grid` (or `--lat` and `--lon`) | `IO91` |
 | Reflector log folder | `ysfradio.service`: `--log-dir` | `/var/log/YSFReflector` |
-| Time-out the talk meter counts to, in seconds | `ysfradio.service`: `--tot` (default 60) | `180` |
+| Talk time limit shown by the timer colours, in seconds (0 = none) | `ysfradio.service`: `--tot` (default 180); an admin can change it from the menu | `180` |
 | Reflector UDP port | `ysfmsg.service`: `--port` | `42002` |
 | News Station room ID | `ysfmsg.service`: `--board-room-id` | `12345` |
 | Callsign the News replies are sent as | `ysfnews.service`: `--call` | `N0CALL` |
@@ -200,6 +200,22 @@ A radio's News Station "download, picture" can be answered with the newest pictu
 
 While a picture or text message is being received, the dashboard shows DATA on the lamp, PICTURE DATA (or MESSAGE DATA) on the blue bar and PICTURE TO (or MESSAGE TO) on the route line, then returns to DIGITAL VOICE. `ysfmsgd.py` writes `/var/lib/ysfradio/activity.json` for this (`--activity-out`, empty = off); the dashboard ignores it when older than 6 seconds.
 
+### Level meter and tabs
+
+The dashboard shows a level meter under the large callsign. It is a loudness meter for V/D type 2 voice, read from the vocoder gain in the frames (`src/ysflevel.py`, used by `ysfmsgd.py`). It is not a modulation (deviation) meter. Voice full rate (DT=3) shows no level.
+
+- `ysfmsgd.py --level-out /var/lib/ysfradio/level.json` writes the loudness about five times a second while a station talks.
+- `ysfradio.py --levels` shows the meter; `--level-floor` and `--level-full` (dB, default 0 and 40) set the scale.
+- `ysflevel.py --replay FILE` or `--live` shows the same level in a terminal.
+
+The bottom tab bar has MENU, LINKED, HEARD, SYS, SCOPE and RADAR (two rows of three on a phone held upright). LINKED, HEARD and SYS show one list at a time; the last choice is remembered in the browser. RADAR is greyed out unless APRS positions are on. Choosing LINKED, HEARD or SYS again takes you back from SCOPE to the lists.
+
+**Timer colours and TIME LIMIT.** The talk timer digits are white, then turn amber at 60% of the time limit, orange at 85%, and flash red once it is passed. This is a warning only: the reflector enforces its own limit. Set the limit with `ysfradio.py --tot SECONDS` (default 180, `0` = none). An admin can change it from MENU, TIME LIMIT (1, 2, 3, 5 or 10 minutes, or OFF); the choice is saved in `<state-dir>/settings.json` and overrides `--tot` after that. Delete that file to go back to `--tot`.
+
+**HEARD, ALL and ACTIVE.** Pressing HEARD again cycles the list. HEARD is the recent transmissions. ALL is every callsign ever seen on the reflector, newest first, with how many times it was heard and when it was last seen; a callsign counts when it transmits, is listed as linked, or is logged as added (a station only ever connected shows LINK). ACTIVE is a 24-hour bar chart of the average number of transmissions in each hour of the day over the last 30 days, with the current hour outlined. The lists are built from the reflector log files by `src/ysfhist.py` and kept in `<state-dir>/history.json`. On the first start every log file in `--log-dir` is read, so the lists are full at once; after that only new log lines are added. Times are the log's own times. `ysfradio.py --no-history` turns it off and `--history-file` moves the file. Delete `history.json` to rebuild it from the logs. `python3 ysfhist.py --log-dir /var/log/YSFReflector` prints what it finds without writing anything.
+
+**SCOPE (voice spectrum).** A 3D waterfall of the voice itself, 0 to 4 kHz, newest line at the front. It needs `--levels` on `ysfradio.py` and `--level-out` on `ysfmsgd.py`, and works for V/D type 2 voice only. It is drawn from the vocoder's own spectral parameters (`src/ysfspec.py`, tables in `src/ysfspec_tab.py`, decoding steps after mbelib, ISC licence); no audio is decoded or kept. The picture is relative loudness of the voice, not of the radio signal. Nothing is drawn or fetched while another tab is showing. `python3 ysfspec.py --replay capture.jsonl` prints the numbers.
+
 ### 8. DMR X-link toggle (optional)
 
 Only for a reflector bridged to DMR with MMDVM_Bridge. See `docs/README-menu.md`.
@@ -293,7 +309,7 @@ How it decides:
    python3 ysfimg.py photo.jpg --size 160x120 --quality medium --live --host 127.0.0.1 --port 42002 --call N0CALL --radio-id 12345 --to-call M0RWV --to-id EB4XU --lat 54.25 --lon -0.40
    ```
 
-`--size` is `160x120` (default) or `320x240`. `--quality` is `low`, `medium` (default) or `high`: about 2.5 to 6 KB at 160x120 and 6 to 17 KB at 320x240 for a typical photo, the range the radio's own LOW and HIGH settings produce. A 160x120 picture takes about 20 to 35 seconds on air, a 320x240 HIGH picture about 90 seconds; a longer picture is more likely to lose a frame on a weak link. `--gap` is the pause between the streams of a picture (default 1.5 s): receiving radios dropped pictures sent with 0.7 s or less. `--fit crop` (default) fills the picture and trims the edges, `--fit pad` keeps the whole image with black bars. EXIF data, including GPS, is not copied. If the last 1 KB chunk of the JPEG would be shorter than 300 bytes, the tool adds a JPEG comment of up to 300 bytes so it is never sent as one short block, a layout not seen from a real radio. `--lat` and `--lon` set the position the picture is sent from (default 0, 0). A picture to everyone on the reflector needs `--all`; without it `--to-call` and `--to-id` are required. Each run sends one picture, and only with `--live`. A picture sent to everyone with `--all` was received and displayed by two radios. A picture sent to one callsign has not been tested on a real radio.
+`--size` is `160x120` (default) or `320x240`. `--quality` is `low`, `medium` (default) or `high`: about 2.5 to 6 KB at 160x120 and 6 to 17 KB at 320x240 for a typical photo, the range the radio's own LOW and HIGH settings produce. A 160x120 picture takes about 20 to 35 seconds on air, a 320x240 HIGH picture about 90 seconds; a longer picture is more likely to lose a frame on a weak link. `--gap` is the pause between the streams of a picture (default 1.5 s): receiving radios dropped pictures sent with 0.7 s or less. `--fit crop` (default) fills the picture and trims the edges, `--fit pad` keeps the whole image with black bars. EXIF data, including GPS, is not copied. The tool adds a JPEG comment (up to about 630 bytes) when needed so the last 1 KB chunk ends in a block shape a real radio sends; other shapes were not received by radios. `--no-pad` turns this off. `--lat` and `--lon` set the position the picture is sent from (default 0, 0). A picture to everyone on the reflector needs `--all`; without it `--to-call` and `--to-id` are required. Each run sends one picture, and only with `--live`. A picture sent to everyone with `--all` was received and displayed by two radios. A picture sent to one callsign has not been tested on a real radio.
 
 ### Upgrading
 

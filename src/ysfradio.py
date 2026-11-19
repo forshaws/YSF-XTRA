@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 import ysfdash
+import ysfhist
 import ysfmenu
 import ysfmsgstore
 import ysfpic
@@ -241,7 +242,7 @@ CSS = """
 :root{--red:#ff2440;--blue:#2f7bff;--white:#f4f4f4;--dim:#59616e;--dark:#2a2f38;--ink:#000}
 *{box-sizing:border-box}
 html,body,*{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;background:#070707}
+html,body{margin:0;height:100%;background:#070707;overflow:hidden}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{display:flex;
 font-family:"DejaVu Sans Mono",Menlo,Consolas,"Courier New",monospace;color:var(--white)}
@@ -249,9 +250,9 @@ a{color:inherit;text-decoration:none}
 a:hover{text-decoration:underline}
 .hidden{display:none!important}
 .screen{--u:min(0.98vw,calc(var(--vh,1vh)*1.63));margin:auto;position:relative;width:calc(var(--u)*100);
-aspect-ratio:5/3;background:var(--ink);border:calc(var(--u)*.7) solid #1b1b1d;
+height:calc(var(--u)*60);background:var(--ink);border:calc(var(--u)*.7) solid #1b1b1d;
 border-radius:calc(var(--u)*1.6);overflow:hidden;display:grid;
-grid-template-rows:7fr 22fr 9fr 6fr 7fr 5fr 28fr 6fr;
+grid-template-rows:minmax(0,7fr) minmax(0,22fr) minmax(0,9fr) minmax(0,6fr) minmax(0,7fr) minmax(0,32fr) minmax(0,7fr);
 box-shadow:0 0 calc(var(--u)*4) rgba(47,123,255,.18),inset 0 0 calc(var(--u)*6) rgba(0,0,0,.9)}
 .screen::after{content:"";position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;
 background:repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0,rgba(255,255,255,.035) 1px,transparent 1px,transparent 3px)}
@@ -280,6 +281,9 @@ border:1px solid #333;color:#444;border-radius:calc(var(--u)*.4)}
 box-shadow:0 0 calc(var(--u)*1.6) var(--red)}
 .timer{font-size:calc(var(--u)*5.4);font-weight:700;line-height:1.15;margin-top:calc(var(--u)*.4);color:var(--white)}
 .timer.idle{color:var(--dim)}
+.timer.warn{color:#ffd35a}
+.timer.hot{color:#ff7a3c}
+.timer.over{color:var(--red);animation:mp 1s steps(2) infinite}
 .route{display:flex;align-items:center;padding:0 calc(var(--u)*1.6);
 font-size:calc(var(--u)*3.2);color:var(--white);white-space:nowrap;overflow:hidden}
 .route b{color:var(--blue);margin-right:calc(var(--u)*1)}
@@ -290,12 +294,12 @@ color:#fff;padding:0 calc(var(--u)*1.6);font-weight:700;font-size:calc(var(--u)*
 letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;overflow:hidden}
 .refl span.n{font-size:calc(var(--u)*2.6);letter-spacing:0}
 .refl span.n.act{background:#ffd35a;color:#2a1c00;padding:0 calc(var(--u)*1.2);border-radius:calc(var(--u)*.4);animation:mp 1.6s steps(2) infinite}
-.meter{display:flex;align-items:center;gap:calc(var(--u)*.5);padding:0 calc(var(--u)*1.6)}
-.seg{flex:1;height:55%;background:#16181d}
-.seg.on{background:var(--white)}
-.seg.on.hi{background:var(--red)}
 .panels{display:block;min-height:0;overflow:hidden}
 .panel.off{display:none}
+.scw{flex:1 1 0;min-height:0;position:relative}
+#hactw{max-width:calc(var(--u)*70)}
+.hidden{display:none}
+.scw canvas{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
 .panel{height:100%;display:flex;flex-direction:column;padding:calc(var(--u)*1) calc(var(--u)*1.6) 0;
 border-right:1px solid #1d1d20;overflow:hidden;min-width:0;min-height:0}
 .panel:last-child{border-right:0}
@@ -345,9 +349,9 @@ border-bottom:1px solid #1d1d20;min-height:0}
 .lvl .lv{flex:0 0 auto;min-width:calc(var(--u)*9);text-align:right;font-size:calc(var(--u)*2.8);font-weight:700;color:var(--white);white-space:nowrap;line-height:1}
 .lvl .lv.idle{color:var(--dim)}
 .lvl .lv.hot{color:var(--red)}
-.tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:calc(var(--u)*.6);padding:calc(var(--u)*.7) calc(var(--u)*1.6);
+.tabs{display:grid;grid-template-rows:minmax(0,1fr);grid-template-columns:repeat(6,minmax(0,1fr));gap:calc(var(--u)*.6);padding:calc(var(--u)*.45) calc(var(--u)*1.6);
 background:#0b0c0f;border-top:1px solid #1d1d20;min-height:0}
-.tab{font:inherit;font-weight:700;font-size:calc(var(--u)*2.7);letter-spacing:.08em;color:var(--white);
+.tab{overflow:hidden;font:inherit;line-height:1;font-weight:700;font-size:calc(var(--u)*2.7);letter-spacing:.08em;color:var(--white);
 background:#1a1c22;border:1px solid #3a3f4a;border-radius:calc(var(--u)*.5);cursor:pointer;padding:0;min-width:0;
 box-shadow:inset 0 calc(var(--u)*-.3) 0 rgba(0,0,0,.45)}
 .tab:hover,.tab:focus-visible{background:#2a2f38;outline:0}
@@ -473,13 +477,12 @@ font-size:calc(var(--u)*3)}
 .refl{padding:calc(var(--u)*1.4) calc(var(--u)*1.6)}
 .refl span.n{display:none}
 .refl span.n.act{display:inline}
-.meter{height:calc(var(--u)*5)}
 .lvl{height:calc(var(--u)*11);padding:calc(var(--u)*1.4) calc(var(--u)*1.6)}
 .lvl .lm{width:100%}
 .lvl .lt{height:calc(var(--u)*2.2)}
 .lvl .lb{height:calc(var(--u)*3.4)}
 .lvl .lv{font-size:calc(var(--u)*3.8);min-width:calc(var(--u)*13)}
-.tabs{height:calc(var(--u)*10);padding:calc(var(--u)*1.2) calc(var(--u)*1.6)}
+.tabs{height:calc(var(--u)*19.5);grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));padding:calc(var(--u)*1.2) calc(var(--u)*1.6)}
 .tab{font-size:calc(var(--u)*3)}
 .panels{flex:1 1 0;min-height:0;display:flex;overflow:hidden}
 .panel{flex:1;height:auto;min-height:0;border-right:0}
@@ -503,7 +506,11 @@ JS = r"""
   'use strict';
   var FADE = 20;
   /* size the display to the visible viewport (iOS Safari's 100vh includes the hidden toolbar) */
-  function fit() { document.documentElement.style.setProperty('--vh', (window.innerHeight / 100) + 'px'); }
+  function fit() {
+    var h = Math.min(window.innerHeight, document.documentElement.clientHeight || window.innerHeight);
+    document.documentElement.style.setProperty('--vh', (h / 100) + 'px');
+    window.scrollTo(0, 0);
+  }
   fit();
   window.addEventListener('resize', fit);
   window.addEventListener('orientationchange', function () { setTimeout(fit, 250); });
@@ -539,23 +546,17 @@ JS = r"""
     return a;
   }
 
-  var SEGS = 20, FULL = 60;
-  var meter = $('meter');
-  var segs = [];
-  for (var i = 0; i < SEGS; i++) {
-    var sg = document.createElement('span');
-    sg.className = 'seg';
-    meter.appendChild(sg);
-    segs.push(sg);
-  }
+  var FULL = 180;
   var talkStart = null, curKey = null, lastDur = 0;
   var live = false, idleSince = null, lastCall = null, sizeCls = '';
 
-  function setMeter(sec) {
-    var lit = Math.min(SEGS, Math.round(sec / FULL * SEGS));
-    for (var j = 0; j < SEGS; j++) {
-      segs[j].className = 'seg' + (j < lit ? ' on' : '') + (j >= SEGS * 0.75 ? ' hi' : '');
-    }
+  function paintTimer(sec, liveNow) {
+    var c = 'timer', f = FULL > 0 ? sec / FULL : 0, el = $('timer');
+    if (!liveNow) { c += ' idle'; }
+    else if (f >= 1) { c += ' over'; }
+    else if (f >= 0.85) { c += ' hot'; }
+    else if (f >= 0.6) { c += ' warn'; }
+    if (el.className !== c) { el.className = c; }
   }
 
   /* big callsign: white while live, grey after TX, darker after FADE seconds */
@@ -617,8 +618,10 @@ JS = r"""
   }
   dragScroll($('linked'));
   dragScroll($('heard'));
+  dragScroll($('hall'));
   $('linked').addEventListener('scroll', function () { arrows('linked', 'lkar'); });
   $('heard').addEventListener('scroll', function () { arrows('heard', 'hdar'); });
+  $('hall').addEventListener('scroll', function () { arrows('hall', 'hdar'); });
 
   function gauge(key, val, max, unit, hotAt) {
     var v = $(key + 'v'), b = $(key + 'b');
@@ -855,10 +858,12 @@ JS = r"""
             dis: st === null || st === undefined});
     l.push({k: 'loc', label: 'MY LOCATION', val: opt.loc + (opt.loc === 'GPS' ? (gpsErr ? ' ' + gpsErr : (gps ? ' OK' : ' ...')) : '')});
     l.push({k: 'units', label: 'DISTANCE UNIT', val: opt.units === 'MI' ? 'MILES' : 'KM'});
+    l.push({k: 'scg', label: 'SCOPE GAIN', val: spGain, dis: !d.lvl});
     l.push({k: 'gm', label: 'RADAR VIEW', val: d.aprs ? 'OPEN' : 'N/A', dis: !d.aprs});
     l.push({k: 'log', label: 'LOG', val: (d.msg || d.news || d.pics) ? (unreadCount() ? unreadCount() + ' NEW' : 'OPEN') : 'N/A', dis: !(d.msg || d.news || d.pics)});
     l.push({k: 'aprs', label: 'APRS POSITIONS', val: d.aprs ? (d.aprs.connected ? 'LIVE ' : 'OFFLINE ') + d.aprs.known : 'N/A', dis: true});
     l.push({k: 'allow', label: 'PIC SENDERS', val: d.pics ? (admin ? (allowLoaded ? String(allowList.length) : '...') : 'ADMIN') : 'N/A', dis: !d.pics});
+    l.push({k: 'tot', label: 'TIME LIMIT', val: FULL > 0 ? (FULL % 60 === 0 ? FULL / 60 + ' MIN' : FULL + ' SEC') : 'OFF'});
     l.push({k: 'admin', label: 'ADMIN', val: admin ? 'LOGOUT' : (d.auth ? 'LOGIN' : 'NO PIN SET'), dis: !admin && !d.auth});
     l.push({k: 'about', label: 'ABOUT', val: ''});
     return l;
@@ -1107,6 +1112,9 @@ JS = r"""
       msg = 'NEEDS APRS ON THE SERVER';
     } else if (it.k === 'log') {
       if (!d.msg && !d.news && !d.pics) { msg = 'NEEDS --messages, --news OR --pictures ON THE SERVER'; } else { view = 'log'; sel = 0; }
+    } else if (it.k === 'scg') {
+      if (!d.lvl) { msg = 'NEEDS --levels ON THE SERVER'; }
+      else { spGain = spGain === 'LOW' ? 'MED' : (spGain === 'MED' ? 'HIGH' : 'LOW'); store.set('scgain', spGain); spPk = 0; }
     } else if (it.k === 'units') {
       opt.units = opt.units === 'MI' ? 'KM' : 'MI'; store.set('units', opt.units);
       if (last) { render(last); }
@@ -1120,6 +1128,17 @@ JS = r"""
         if (!d.auth) { msg = 'ADMIN PIN NOT SET ON SERVER'; }
         else { view = 'pin'; pin = ''; wantDmr = false; wantAllow = true; }
       } else { view = 'allow'; sel = 0; loadAllow(); }
+    } else if (it.k === 'tot') {
+      if (!admin) { msg = d.auth ? 'LOGIN AS ADMIN TO CHANGE THE TIME LIMIT' : 'ADMIN PIN NOT SET ON SERVER'; }
+      else {
+        var TOTS = [60, 120, 180, 300, 600, 0], nx = TOTS[(TOTS.indexOf(FULL) + 1) % TOTS.length];
+        post('api/settings', {tot: nx}, function (code, j) {
+          if (code === 200 && typeof j.tot === 'number') { FULL = j.tot; if (last) { last.tot = j.tot; } msg = ''; }
+          else if (code === 401) { admin = null; msg = 'SESSION EXPIRED'; }
+          else { msg = 'COULD NOT SAVE'; }
+          if (menuOpen) { drawMenu(); }
+        });
+      }
     } else if (it.k === 'about') { view = 'about'; }
     else if (it.k === 'exit') { closeMenu(); return; }
     drawMenu();
@@ -1300,18 +1319,260 @@ JS = r"""
   $('gback').addEventListener('click', backGm);
   $('grange').addEventListener('click', function () { gmIdx = (gmIdx + 1) % GM_RANGES.length; store.set('range', String(gmIdx)); drawGm(); });
 
-  /* bottom tabs: one list at a time */
-  var TABS = ['linked', 'heard', 'sys'];
+  /* bottom tabs: one list (or the voice scope) at a time */
+  var TABS = ['linked', 'heard', 'sys', 'scope'], curTab = 'linked';
+  function scopeOk() { return !!(last && last.lvl); }
+  function paintTabs() {
+    TABS.forEach(function (n) {
+      var c = 'tab' + (n === curTab ? ' on' : '') + (n === 'scope' && !scopeOk() ? ' dis' : '');
+      if ($('t-' + n).className !== c) { $('t-' + n).className = c; }
+    });
+  }
   function setTab(k) {
     if (TABS.indexOf(k) < 0) { k = 'linked'; }
-    store.set('tab', k);
+    curTab = k;
+    if (k !== 'scope') { store.set('tab', k); }
     TABS.forEach(function (n) {
-      $('p-' + n).className = 'panel' + (n === 'sys' ? ' sysp' : '') + (n === k ? '' : ' off');
-      $('t-' + n).className = 'tab' + (n === k ? ' on' : '');
+      $('p-' + n).className = 'panel' + (n === 'sys' ? ' sysp' : (n === 'scope' ? ' scp' : '')) + (n === k ? '' : ' off');
     });
+    paintTabs();
     arrows('linked', 'lkar'); arrows('heard', 'hdar');
+    scopeShow(k === 'scope');
+    if (k !== 'heard') { heardMode = 0; }
+    if (typeof paintHeard === 'function') { paintHeard(); }
   }
-  TABS.forEach(function (n) { $('t-' + n).addEventListener('click', function () { setTab(n); this.blur(); }); });
+  /* HEARD button: last heard -> ALL (every callsign ever) -> ACTIVE (24 h chart) -> back */
+  var heardMode = 0, HMODES = ['HEARD', 'ALL', 'ACTIVE'], histD = null, histTimer = 0;
+  var MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  function histOk() { return !!(last && last.hist); }
+  function paintHeard() {
+    var m = heardMode;
+    $('heard').className = 'rows' + (m === 0 ? '' : ' hidden');
+    $('hall').className = 'rows' + (m === 1 ? '' : ' hidden');
+    $('hactw').className = 'scw' + (m === 2 ? '' : ' hidden');
+    $('hdt').textContent = m === 1 && histD ? 'ALL  ' + histD.total : (m === 2 && histD ? 'ACTIVE  AVG TX PER HOUR' : HMODES[m]);
+    $('t-heard').textContent = curTab === 'heard' ? HMODES[m] : 'HEARD';
+    if (histTimer) { clearInterval(histTimer); histTimer = 0; }
+    if (m > 0 && curTab === 'heard') { histFetch(); histTimer = setInterval(histFetch, 30000); }
+    histPaint();
+    arrows(m === 1 ? 'hall' : 'heard', 'hdar');
+  }
+  function histFetch() {
+    var x = new XMLHttpRequest();
+    x.open('GET', 'api/history', true);
+    x.onload = function () {
+      if (x.status !== 200) { return; }
+      try { histD = JSON.parse(x.responseText); } catch (e) { return; }
+      histPaint();
+    };
+    x.send();
+  }
+  function histWhen(t) {
+    var d = parseInt(t.slice(8, 10), 10), m = parseInt(t.slice(5, 7), 10) - 1;
+    return (d < 10 ? '0' : '') + d + ' ' + (MON[m] || '') + ' ' + t.slice(11, 16);
+  }
+  function histPaint() {
+    var m = heardMode;
+    if (m === 0 || !histD) { return; }
+    $('hdt').textContent = m === 1 ? 'ALL  ' + histD.total : (histD.days ? 'ACTIVE  AVG TX PER HOUR' : 'ACTIVE');
+    if (m === 1) {
+      rows('hall', histD.all.map(function (r) { return [{call: r[0]}, r[3] + (r[4] === 'L' ? ' LINK' : ' TX'), histWhen(r[1])]; }), ['a', 'c', 'b']);
+      arrows('hall', 'hdar');
+    } else {
+      $('hdar').textContent = histD.days ? histD.days + ' DAY' + (histD.days === 1 ? '' : 'S') : '';
+      histChart();
+    }
+  }
+  function histChart() {
+    var cv = $('hact'), w = cv.parentNode.clientWidth, h = cv.parentNode.clientHeight;
+    if (!w || !h || !histD) { return; }
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    var g = cv.getContext('2d'); if (!g) { return; }
+    if (!spLut) { spLut = spColours(); }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    var lab = Math.max(10, Math.min(14, h * 0.09)), x0 = lab * 2.6, top = lab * 1.2, bot = h - lab * 1.8, hh = bot - top, ww = w - x0 - 2;
+    g.font = '700 ' + lab + 'px "DejaVu Sans Mono",Menlo,Consolas,monospace';
+    if (!histD.days) {
+      g.fillStyle = '#8a93a1'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(histD.building ? 'READING THE LOGS...' : 'NO LOG HISTORY YET', w / 2, h / 2); return;
+    }
+    var mx = 0, pk = 0, i;
+    for (i = 0; i < 24; i++) { if (histD.hours[i] > mx) { mx = histD.hours[i]; pk = i; } }
+    var top2 = Math.max(1, Math.ceil(mx * 1.1));
+    var step = top2 <= 4 ? 1 : (top2 <= 10 ? 2 : (top2 <= 30 ? 5 : (top2 <= 100 ? 20 : 50)));
+    top2 = Math.ceil(top2 / step) * step;
+    g.strokeStyle = 'rgba(130,150,200,0.28)'; g.lineWidth = 1; g.fillStyle = '#8a93a1'; g.textAlign = 'right'; g.textBaseline = 'middle';
+    for (var v = 0; v <= top2; v += step) {
+      var y = bot - hh * v / top2;
+      g.beginPath(); g.moveTo(x0, y); g.lineTo(w, y); g.stroke();
+      g.fillText(String(v), x0 - lab * 0.5, y);
+    }
+    var bw = ww / 24, nowH = new Date().getHours();
+    for (i = 0; i < 24; i++) {
+      var f = histD.hours[i] / top2, bh = hh * f;
+      if (bh > 0.5) {
+        g.fillStyle = spLut[Math.min(63, Math.round(Math.min(1, histD.hours[i] / Math.max(1, mx)) * 50) + 8)];
+        g.fillRect(x0 + i * bw + bw * 0.12, bot - bh, bw * 0.76, bh);
+      }
+      if (i === nowH) { g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.strokeRect(x0 + i * bw + bw * 0.08, top, bw * 0.84, hh); }
+    }
+    g.fillStyle = '#8a93a1'; g.textAlign = 'center'; g.textBaseline = 'top';
+    for (i = 0; i < 24; i += 3) { g.fillText(i < 10 ? '0' + i : String(i), x0 + (i + 0.5) * bw, bot + lab * 0.4); }
+    g.fillStyle = '#f4f4f4'; g.textAlign = 'left'; g.textBaseline = 'bottom';
+    g.fillText('PEAK ' + (pk < 10 ? '0' : '') + pk + ':00   ' + histD.hours[pk].toFixed(1) + ' TX/HR', x0, top - 2);
+  }
+  window.addEventListener('resize', function () { if (heardMode === 2) { histChart(); } });
+  TABS.forEach(function (n) {
+    $('t-' + n).addEventListener('click', function () {
+      if (this.className.indexOf('dis') >= 0) { return; }
+      if (n === 'heard' && curTab === 'heard' && histOk()) { heardMode = (heardMode + 1) % 3; paintHeard(); this.blur(); return; }
+      setTab(n); this.blur();
+    });
+  });
+
+  /* voice spectrum waterfall (rows come from ysfmsgd.py through api/level) */
+  var SPN = 20, SPD = 46, SP_LO = 10, SP_HI = 48, SPAL = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
+  var spQ = [], spHist = [], spLast = null, spRaf = 0, spT = 0, spAcc = 0, spOn = false, spLut = null;
+  function spColours() {
+    var st = [[0, 22, 48, 122], [0.25, 47, 123, 255], [0.5, 25, 211, 107], [0.75, 255, 211, 90], [1, 255, 36, 64]], out = [];
+    for (var i = 0; i < 64; i++) {
+      var x = i / 63, k = 1;
+      while (k < st.length - 1 && x > st[k][0]) { k++; }
+      var a = st[k - 1], b = st[k], f = (x - a[0]) / (b[0] - a[0]);
+      out.push('rgb(' + Math.round(a[1] + (b[1] - a[1]) * f) + ',' + Math.round(a[2] + (b[2] - a[2]) * f) + ',' + Math.round(a[3] + (b[3] - a[3]) * f) + ')');
+    }
+    return out;
+  }
+  var SPG = {LOW: 8, MED: 3, HIGH: -3}, spGain = store.get('scgain', 'MED'), spPk = 0, spSm = null, spPend = null;
+  if (!SPG.hasOwnProperty(spGain)) { spGain = 'MED'; }
+  function spDecode(str) {
+    var r = [], mx = 0;
+    for (var i = 0; i < SPN; i++) {
+      var q = SPAL.indexOf(str.charAt(i)); if (q < 0) { q = 0; }
+      r.push(q); if (q > mx) { mx = q; }
+    }
+    /* reference follows the recent peak (any mic gain), never below SP_HI, and falls slowly */
+    spPk = Math.max(mx, spPk - 0.02);
+    var hi = Math.max(SP_HI, spPk) + SPG[spGain], lo = hi - 38, o = [];
+    for (i = 0; i < SPN; i++) { var v = (r[i] - lo) / (hi - lo); o.push(v < 0 ? 0 : (v > 1 ? 1 : v)); }
+    /* smooth across frequency, then rise quickly and fall slowly in time, like an RF waterfall */
+    var f = [];
+    for (i = 0; i < SPN; i++) { f.push(0.25 * o[Math.max(0, i - 1)] + 0.5 * o[i] + 0.25 * o[Math.min(SPN - 1, i + 1)]); }
+    if (!spSm) { spSm = f.slice(); }
+    for (i = 0; i < SPN; i++) { spSm[i] += (f[i] - spSm[i]) * (f[i] > spSm[i] ? 0.55 : 0.16); }
+    return spSm.slice();
+  }
+  function spPush(j) {
+    if (!j || typeof j.n !== 'number' || !j.sp || !j.sp.length) { return; }
+    var take = spLast === null ? 0 : j.n - spLast;
+    if (take < 0 || take > j.sp.length) { take = j.sp.length; }
+    spLast = j.n;
+    if (!spOn) { return; }
+    for (var i = j.sp.length - take; i < j.sp.length; i++) {
+      var rw = spDecode(j.sp[i]);
+      if (!spPend) { spPend = rw; continue; }          /* two 40 ms rows make one, about 12 lines a second */
+      for (var k = 0; k < SPN; k++) { spPend[k] = (spPend[k] + rw[k]) / 2; }
+      spQ.push(spPend); spPend = null;
+    }
+    if (spQ.length > 24) { spQ.splice(0, spQ.length - 24); }
+    if (take && !spRaf) { spT = 0; spRaf = requestAnimationFrame(spFrame); }
+  }
+  function spFrame(t) {
+    spRaf = 0;
+    if (!spOn) { return; }
+    var dt = spT ? Math.min(0.2, (t - spT) / 1000) : 0.04;
+    spT = t;
+    var rate = spQ.length ? 12 + spQ.length * 1.5 : 6;
+    spAcc += dt * rate;
+    var moved = false;
+    while (spAcc >= 1) {
+      spAcc -= 1;
+      var row = spQ.length ? spQ.shift() : null;
+      if (!row && !spHist.length) { spAcc = 0; break; }
+      if (row) { spHist.unshift(row); } else { spHist.unshift(null); }
+      if (spHist.length > SPD) { spHist.pop(); }
+      moved = true;
+    }
+    spDraw();
+    var busy = spQ.length > 0;
+    for (var i = 0; i < spHist.length && !busy; i++) { if (spHist[i]) { busy = true; } }
+    if (busy) { spRaf = requestAnimationFrame(spFrame); } else { spHist = []; spT = 0; spDraw(); }
+  }
+  function spDraw() {
+    var cv = $('scope'), w = cv.parentNode.clientWidth, h = cv.parentNode.clientHeight;
+    if (!w || !h) { return; }
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    var g = cv.getContext('2d');
+    if (!g) { return; }
+    if (!spLut) { spLut = spColours(); }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    var lab = Math.max(10, Math.min(14, h * 0.07)), top = h * 0.03, bot = h - lab * 1.9, hh = bot - top;
+    var cx = w / 2, w2 = w * 0.47, sb = 0.3, vy = top + hh * 0.1, hmax = hh * 0.72, k = 1 / sb - 1;
+    function sOf(r) { return 1 / (1 + k * r / (SPD - 1)); }
+    function px(xn, s) { return cx + xn * w2 * s; }
+    function py(hn, s) { return vy + (bot - vy) * s - hn * hmax * s; }
+    function ln(x1, y1, x2, y2) { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); }
+    var r, n, hn, xn;
+    /* walls and floor: a grid box that narrows to the back */
+    g.lineWidth = 1;
+    g.strokeStyle = 'rgba(130,150,200,0.45)';
+    for (n = 0; n <= 4; n++) { xn = -1 + n * 0.5; ln(px(xn, 1), py(0, 1), px(xn, sb), py(0, sb)); }
+    for (n = 0; n <= SPD - 1; n += 5) { r = sOf(n); ln(px(-1, r), py(0, r), px(1, r), py(0, r)); }
+    ln(px(-1, sb), py(0, sb), px(1, sb), py(0, sb));
+    g.strokeStyle = 'rgba(130,150,200,0.34)';
+    for (n = 1; n <= 4; n++) {
+      hn = n / 4;
+      ln(px(-1, sb), py(hn, sb), px(1, sb), py(hn, sb));
+      ln(px(-1, 1), py(hn, 1), px(-1, sb), py(hn, sb));
+      ln(px(1, 1), py(hn, 1), px(1, sb), py(hn, sb));
+    }
+    for (n = 0; n <= 4; n++) { xn = -1 + n * 0.5; ln(px(xn, sb), py(0, sb), px(xn, sb), py(1, sb)); }
+    ln(px(-1, 1), py(0, 1), px(-1, 1), py(1, 1));
+    ln(px(1, 1), py(0, 1), px(1, 1), py(1, 1));
+    /* the voice: separate spikes, back to front, shrinking, dimming and damping towards the centre */
+    var NBAR = 121;
+    for (r = SPD - 1; r >= 0; r--) {
+      var row = spHist[r]; if (!row) { continue; }
+      var s = sOf(r), z = r / (SPD - 1), damp = Math.exp(-1.0 * z), bw = Math.max(1, w * 0.0026 * s);
+      g.globalAlpha = 1 - 0.72 * z;
+      var yb = py(0, s), prev = 0;
+      for (n = 0; n < NBAR; n++) {
+        var f = Math.abs(2 * n / (NBAR - 1) - 1) * (SPN - 1), a = Math.floor(f), b = Math.min(SPN - 1, a + 1), v = row[a] + (row[b] - row[a]) * (f - a);
+        v = Math.pow(v, 1.3);
+        if (v < 0.05) { continue; }
+        var bh = v * hmax * s * damp, x = px(-1 + 2 * n / (NBAR - 1), s);
+        g.fillStyle = spLut[Math.min(63, Math.round(v * 63))];
+        g.fillRect(x - bw / 2, yb - bh, bw, bh);
+        if (v > 0.5) { g.fillStyle = '#ffffff'; g.fillRect(x - bw / 2, yb - bh, bw, Math.max(1, bw * 0.6)); }
+      }
+    }
+    g.globalAlpha = 1;
+    /* carrier line down the middle, like the radio's red marker */
+    g.strokeStyle = 'rgba(255,36,64,0.75)'; g.lineWidth = 1.5;
+    ln(px(0, sb), py(0, sb), px(0, sb), py(1, sb));
+    ln(px(0, 1), py(0, 1), px(0, sb), py(0, sb));
+    /* newest line along the front in red, like the radio's baseline */
+    g.strokeStyle = '#ff2440'; g.lineWidth = 2;
+    ln(px(-1, 1), py(0, 1), px(1, 1), py(0, 1));
+    g.font = '700 ' + lab + 'px "DejaVu Sans Mono",Menlo,Consolas,monospace';
+    g.fillStyle = '#8a93a1';
+    g.textBaseline = 'top';
+    var xs = ['4k', '2k', '0', '2k', '4k'];
+    for (var q = 0; q < 5; q++) {
+      g.textAlign = q === 0 ? 'left' : (q === 4 ? 'right' : 'center');
+      g.fillText(xs[q], px(-1 + q / 2, 1), bot + lab * 0.5);
+    }
+  }
+  function scopeShow(on) {
+    spOn = on;
+    spQ = []; spHist = []; spAcc = 0; spT = 0; spSm = null; spPend = null;
+    if (spRaf) { cancelAnimationFrame(spRaf); spRaf = 0; }
+    if (on) { spDraw(); }
+  }
+  window.addEventListener('resize', function () { if (spOn && !spRaf) { spDraw(); } });
   setTab(store.get('tab', 'linked'));
 
   /* voice level meter under the callsign (loudness from ysfmsgd.py --level-out) */
@@ -1360,6 +1621,7 @@ JS = r"""
       var j = null;
       if (x.status === 200) { try { j = JSON.parse(x.responseText); } catch (e) {} }
       lvlPush(j);
+      spPush(j);
     };
     x.onloadend = function () { lvBusy = false; };
     x.send();
@@ -1369,7 +1631,7 @@ JS = r"""
   var nodeShown = null;
   function render(d) {
     if (d.fade) { FADE = d.fade; }
-    if (d.tot) { FULL = d.tot; }
+    if (typeof d.tot === 'number') { FULL = d.tot; }
     last = d; admin = d.admin || null;
     var nt = d.now_talking, lh = d.last_heard.length ? d.last_heard[0] : null;
     var call = nt ? nt.src : (lh ? lh.src : '------');
@@ -1407,8 +1669,8 @@ JS = r"""
     }
     $('rid').textContent = nt && talkId ? 'ID ' + talkId : '';
     $('rdist').textContent = distText(call, true);
-    $('timer').className = 'timer' + (nt ? '' : ' idle');
-    if (!nt) { $('timer').textContent = mmss(lastDur); setMeter(lastDur); }
+    if (!nt) { $('timer').textContent = mmss(lastDur); paintTimer(lastDur, false); }
+    else { paintTimer(talkStart === null ? 0 : (Date.now() - talkStart) / 1000, true); }
 
     $('rname').textContent = d.name;
     if (d.node !== nodeShown) {
@@ -1449,7 +1711,7 @@ JS = r"""
       return row;
     }), ['b', 'a', 'c', 'd']);
     arrows('linked', 'lkar');
-    arrows('heard', 'hdar');
+    if (heardMode === 0) { arrows('heard', 'hdar'); }
 
     var s = d.system || {};
     gauge('cpu', s.cpu, 100, '%', 85);
@@ -1462,6 +1724,8 @@ JS = r"""
     picUpdate(d);
     newsUpdate(d);
     $('gmbtn').className = 'tab' + (d.aprs ? '' : ' dis');
+    paintTabs();
+    if (curTab === 'scope' && !d.lvl) { setTab('linked'); }
     if (d.lvl && (!LV || LV.floor !== d.lvl.floor || LV.full !== d.lvl.full)) { LV = d.lvl; lvlScale(); }
     else if (!d.lvl) { LV = null; }
     if (gmOpen) { drawGm(); }
@@ -1470,7 +1734,7 @@ JS = r"""
     if (talkStart !== null) {
       var sec = (Date.now() - talkStart) / 1000;
       $('timer').textContent = mmss(sec);
-      setMeter(sec);
+      paintTimer(sec, true);
     }
     paintCall();
     var t = new Date();
@@ -1511,10 +1775,10 @@ INDEX = """<!doctype html>
 <div class="lvl"><span class="lk">LVL</span><div class="lm"><div class="lbx"><div id="lvlscale" class="lt"></div><div id="lvlbar" class="lb"></div></div><span id="lvlval" class="lv idle">-- dB</span></div><span></span></div>
 <div class="route"><b id="rlab">LAST</b><span id="dest"></span><span id="rdist" class="rdist"></span></div>
 <div class="refl"><span id="rname"></span><span id="mode" class="n">DIGITAL VOICE</span></div>
-<div id="meter" class="meter"></div>
 <div class="panels">
 <div id="p-linked" class="panel"><h2><span>LINKED</span><span id="lkar" class="ar"></span></h2><div id="linked" class="rows"></div></div>
-<div id="p-heard" class="panel off"><h2><span>HEARD</span><span id="hdar" class="ar"></span></h2><div id="heard" class="rows"></div></div>
+<div id="p-heard" class="panel off"><h2><span id="hdt">HEARD</span><span id="hdar" class="ar"></span></h2><div id="heard" class="rows"></div><div id="hall" class="rows hidden"></div><div id="hactw" class="scw hidden"><canvas id="hact"></canvas></div></div>
+<div id="p-scope" class="panel scp off"><h2><span>SCOPE</span><span class="ar">VOICE kHz</span></h2><div class="scw"><canvas id="scope"></canvas></div></div>
 <div id="p-sys" class="panel sysp off"><h2><span>SYSTEM</span></h2>
 <div class="g"><span class="k">CPU</span><div class="bar"><i id="cpub"></i></div><span id="cpuv" class="v">--</span></div>
 <div class="g"><span class="k">TMP</span><div class="bar"><i id="tmpb"></i></div><span id="tmpv" class="v">--</span></div>
@@ -1522,7 +1786,7 @@ INDEX = """<!doctype html>
 <div class="g"><span class="k">LOAD</span><span></span><span id="loadv" class="v">--</span></div>
 <div class="g"><span class="k">UP</span><span></span><span id="upv" class="v">--</span></div>
 </div></div>
-<div class="tabs"><button id="menubtn" class="tab menu-t" type="button">MENU</button><button id="t-linked" class="tab on" type="button">LINKED</button><button id="t-heard" class="tab" type="button">HEARD</button><button id="t-sys" class="tab" type="button">SYS</button><button id="gmbtn" class="tab dis" type="button">RADAR</button></div>
+<div class="tabs"><button id="menubtn" class="tab menu-t" type="button">MENU</button><button id="t-linked" class="tab on" type="button">LINKED</button><button id="t-heard" class="tab" type="button">HEARD</button><button id="t-sys" class="tab" type="button">SYS</button><button id="t-scope" class="tab dis" type="button">SCOPE</button><button id="gmbtn" class="tab dis" type="button">RADAR</button></div>
 <div id="menu" class="menu hidden"><div class="mh"><span id="mtitle">MENU</span><span id="mnode"></span></div>
 <div id="mbody" class="mb"></div><div id="mmsg" class="mmsg"></div>
 <div id="mf" class="mf"><button id="kback" class="key" type="button">BACK</button><span id="mpg" class="mpg"></span><button id="kup" class="key" type="button">&#9650;</button><button id="kdn" class="key" type="button">&#9660;</button><button id="ksel" class="key red" type="button">SELECT</button><button id="kfwd" class="key hidden" type="button">FWD &#9654;</button></div><div class="uprobe" id="uprobe"></div></div>
@@ -1601,9 +1865,16 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 d["news"] = self._msg_status("newsreader")
                 d["pics"] = self._msg_status("picreader")
                 d["act"] = _activity(args.activity_file)
+                d["hist"] = getattr(args, "hist", None) is not None
                 d["lvl"] = {"floor": args.level_floor, "full": args.level_full} if args.levels else None
                 body = json.dumps(d).encode("utf-8")
                 self._send(200, "application/json", body, head_only)
+            elif path == "/api/history":
+                h = getattr(args, "hist", None)
+                if h is None:
+                    self._send(404, "text/plain", b"not found\n", head_only)
+                else:
+                    self._send(200, "application/json", json.dumps(h.snapshot()).encode("utf-8"), head_only)
             elif path == "/api/level":
                 body = json.dumps(_level(args.level_file) if args.levels else None).encode("utf-8")
                 self._send(200, "application/json", body, head_only)
@@ -1695,7 +1966,7 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
             base = args.base
             if base and path.startswith(base + "/"):
                 path = path[len(base):]
-            if menu is None or path not in ("/api/login", "/api/logout", "/api/bridge", "/api/delete", "/api/picallow"):
+            if menu is None or path not in ("/api/login", "/api/logout", "/api/bridge", "/api/delete", "/api/picallow", "/api/settings"):
                 return self._json(404, {"error": "not found"})
             if self.headers.get("X-Requested-With") != "ysfradio":
                 return self._json(403, {"error": "forbidden"})
@@ -1736,6 +2007,16 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
             if path == "/api/logout":
                 auth.logout(token)
                 return self._json(200, {"ok": True}, self._cookie("", 0))
+            if path == "/api/settings":
+                tot = obj.get("tot")
+                if not isinstance(tot, int) or isinstance(tot, bool) or not (tot == 0 or 10 <= tot <= 600):
+                    return self._json(400, {"error": "bad value"})
+                try:
+                    save_settings(args.settings_file, {"tot": tot})
+                except OSError:
+                    return self._json(500, {"error": "cannot write"})
+                args.tot = tot
+                return self._json(200, {"ok": True, "tot": tot})
             if path == "/api/delete":
                 store = {"msg": getattr(args, "msgwriter", None),
                          "news": getattr(args, "newswriter", None),
@@ -1845,18 +2126,47 @@ def _activity(path):
     return None
 
 
+SPROW = re.compile(r"^[0-9A-Za-z_-]{20}$")
+
+
 def _level(path):
     """The loudness ysfmsgd.py last wrote ({"db", "pk", "call"}), or None when nobody is talking.
     Ignored when older than 1.2 seconds."""
     try:
         with open(path, "r") as f:
-            a = json.loads(f.read(512))
+            a = json.loads(f.read(4096))
         if (isinstance(a, dict) and isinstance(a.get("db"), (int, float)) and isinstance(a.get("pk"), (int, float))
                 and isinstance(a.get("t"), (int, float)) and 0 <= time.time() - a["t"] <= 1.2):
-            return {"db": a["db"], "pk": a["pk"], "call": str(a.get("call", ""))[:12]}
+            out = {"db": a["db"], "pk": a["pk"], "call": str(a.get("call", ""))[:12]}
+            sp, n = a.get("sp"), a.get("n")
+            if (isinstance(n, int) and not isinstance(n, bool) and isinstance(sp, list) and len(sp) <= 15
+                    and all(isinstance(r, str) and SPROW.match(r) for r in sp)):
+                out["n"], out["sp"] = n, sp
+            return out
     except (OSError, ValueError):
         pass
     return None
+
+
+def load_settings(path):
+    """Settings the admin changed from the menu ({"tot": seconds}); {} when none are saved."""
+    try:
+        with open(path, "r") as f:
+            a = json.loads(f.read(512))
+        t = a.get("tot") if isinstance(a, dict) else None
+        if isinstance(t, int) and not isinstance(t, bool) and (t == 0 or 10 <= t <= 600):
+            return {"tot": t}
+    except (OSError, ValueError):
+        pass
+    return {}
+
+
+def save_settings(path, d):
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    with os.fdopen(fd, "w") as f:
+        json.dump(d, f)
+    os.replace(tmp, path)
 
 
 def make_pin_cli(state_dir):
@@ -1884,8 +2194,10 @@ def main():
                    help="serve under a URL path prefix, e.g. /dash (also works behind a proxy that strips it)")
     p.add_argument("--fade", type=int, default=20,
                    help="seconds after a transmission before the callsign darkens (default 20)")
-    p.add_argument("--tot", type=int, default=60,
-                   help="seconds the talk meter takes to fill, set to your reflector's time-out (default 60)")
+    p.add_argument("--tot", type=int, default=180,
+                   help="your reflector's talk time limit in seconds (default 180, 0 = none): the timer digits "
+                        "turn amber, orange and red as it runs out. An admin can change it from the menu "
+                        "(TIME LIMIT), and that choice is kept in <state-dir>/settings.json")
     p.add_argument("--grid", default="",
                    help="Maidenhead locator shown with a map pin, e.g. IO91 or IO91WM")
     p.add_argument("--lat", type=float, help="latitude (alternative to --grid)")
@@ -1919,6 +2231,10 @@ def main():
                    help="show pictures kept by ysfmsgd.py and manage the sender whitelist (MENU > LOG > PICTURES)")
     p.add_argument("--activity-file", default="",
                    help="file written by ysfmsgd.py that marks picture/data transfers (default: <state-dir>/activity.json)")
+    p.add_argument("--no-history", action="store_true",
+                   help="turn off the HEARD tab's ALL and ACTIVE lists (they are built from the reflector logs "
+                        "and kept in <state-dir>/history.json)")
+    p.add_argument("--history-file", default="", help="history file (default: <state-dir>/history.json)")
     p.add_argument("--levels", action="store_true",
                    help="show the voice level meter under the callsign (needs ysfmsgd.py --level-out)")
     p.add_argument("--level-file", default="",
@@ -1963,7 +2279,9 @@ def main():
     args.name = args.name[:40]
     args.node = re.sub(r"[^A-Za-z0-9/]", "", args.node)[:12].upper()
     args.fade = max(1, min(600, args.fade))
-    args.tot = max(10, min(600, args.tot))
+    args.tot = 0 if args.tot <= 0 else max(10, min(600, args.tot))
+    args.settings_file = os.path.join(args.state_dir, "settings.json")
+    args.tot = load_settings(args.settings_file).get("tot", args.tot)
     args.base = args.base.rstrip("/")
     if args.base and not re.match(r"^/[A-Za-z0-9_-]+$", args.base):
         raise SystemExit("--base must look like /dash")
@@ -2006,6 +2324,13 @@ def main():
             t.daemon = True
             t.start()
     menu = Menu(auth, bridge, aprs)
+    args.hist = None
+    if not args.no_history:
+        args.hist = ysfhist.History(args.history_file or os.path.join(args.state_dir, "history.json"),
+                                    args.log_dir, args.prefix)
+        t = threading.Thread(target=args.hist.run, args=(stop,))
+        t.daemon = True
+        t.start()
     for target, targs in ((tail_loop, (state, args.log_dir, args.prefix, stop)),
                           (sys_loop, (stats, stop))):
         t = threading.Thread(target=target, args=targs)

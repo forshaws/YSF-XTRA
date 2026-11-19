@@ -26,6 +26,7 @@ on the reflector. Only the latest position per callsign is kept.
 import argparse
 import collections
 import ctypes
+import json
 import os
 import signal
 import socket
@@ -129,6 +130,9 @@ class Activity(object):
             self._write("", "", now)
 
 
+SPALPHA = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_"
+
+
 class LevelOut(object):
     """Loudness of the voice being received, for the dashboard's level meter. Reads the vocoder gain
     out of each V/D type 2 voice frame (ysflevel.py) and rewrites one small file about five times a
@@ -141,6 +145,12 @@ class LevelOut(object):
         import ysflevel
         self.path = path
         self.lv = ysflevel.Levels()
+        self.vb = ysflevel.vocoder_bits
+        import ysfspec
+        self.spec = ysfspec.Spectrum()
+        self.rows = []                       # recent spectrum rows (strings), newest last
+        self.nrows = 0                       # rows made since start; the dashboard counts what it missed
+        self.half = None                     # first of the two 20 ms spectra that make one row
         self.sum = 0.0
         self.n = 0
         self.pk = None
@@ -166,7 +176,9 @@ class LevelOut(object):
             if not self.idle:
                 self.idle = True
                 self.sum, self.n, self.pk = 0.0, 0, None
-                self._write('{"t": %.2f, "call": "", "db": null, "pk": null}' % now)
+                self.half = None
+                self._write('{"t": %.2f, "call": "", "db": null, "pk": null, "n": %d, "sp": []}'
+                            % (now, self.nrows))
             return
         if fi != 1:
             return
@@ -175,10 +187,24 @@ class LevelOut(object):
                 self.sum += db
                 self.n += 1
                 self.pk = db if self.pk is None else max(self.pk, db)
+        for j in range(5):
+            d = self.vb(bits, j)
+            b = self.spec.channel(key, d, now + 0.02 * j)
+            if b is None:
+                self.half = None
+                continue
+            if self.half is None:
+                self.half = b
+                continue
+            avg = [(p + q) / 2.0 for p, q in zip(self.half, b)]
+            self.half = None
+            self.rows.append("".join(SPALPHA[max(0, min(63, int((v + 35.0) * 63.0 / 75.0)))] for v in avg))
+            self.nrows += 1
+            del self.rows[:-15]
         if self.n and now - self.t >= self.EVERY:
             call = "".join(c for c in key[1] if c.isalnum() or c in "/-")[:12]
-            self._write('{"t": %.2f, "call": "%s", "db": %.1f, "pk": %.1f}'
-                        % (now, call, self.sum / self.n, self.pk))
+            self._write('{"t": %.2f, "call": "%s", "db": %.1f, "pk": %.1f, "n": %d, "sp": %s}'
+                        % (now, call, self.sum / self.n, self.pk, self.nrows, json.dumps(self.rows)))
             self.t, self.idle = now, False
             self.sum, self.n, self.pk = 0.0, 0, None
 
