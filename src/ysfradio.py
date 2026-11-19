@@ -314,6 +314,8 @@ touch-action:pan-y;cursor:grab}
 .r .a{color:var(--white)}
 .r .b{color:var(--dim)}
 .r .c{color:var(--blue)}
+.r.sub{opacity:.7}
+.r .tg{cursor:pointer;color:var(--blue)}
 .g{display:grid;grid-template-columns:calc(var(--u)*7) 1fr calc(var(--u)*9);align-items:center;
 gap:calc(var(--u)*1);font-size:calc(var(--u)*2.7);line-height:1.55}
 .g .k{color:var(--blue);font-weight:700}
@@ -582,19 +584,22 @@ JS = r"""
     var up = b.scrollTop > 3, dn = max > 3 && b.scrollTop < max - 3;
     $(arId).textContent = (up ? '▲' : '') + (dn ? '▼' : '');
   }
-  function rows(id, list, classes) {
-    var sig = JSON.stringify(list);
+  function rows(id, list, classes, meta) {
+    var sig = JSON.stringify(list) + (meta ? JSON.stringify(meta) : '');
     if (sigs[id] === sig) { return; }
     sigs[id] = sig;
     var box = $(id), st = box.scrollTop;
     box.setAttribute('data-k', classes.join(''));
     clear(box);
     list.forEach(function (r) {
-      var div = document.createElement('div'); div.className = 'r';
+      var m = meta ? meta[list.indexOf(r)] : null;
+      var div = document.createElement('div'); div.className = 'r' + (m && m.sub ? ' sub' : '');
       r.forEach(function (c, idx) {
         var sp = document.createElement('span');
         sp.className = classes[idx] || 'b';
-        if (c !== null && typeof c === 'object') { sp.appendChild(callNode(c.call)); }
+        if (c !== null && typeof c === 'object' && c.tg) {
+          sp.className += ' tg'; sp.setAttribute('data-g', c.tg); sp.textContent = c.t;
+        } else if (c !== null && typeof c === 'object') { sp.appendChild(callNode(c.call)); }
         else { sp.textContent = c; }
         div.appendChild(sp);
       });
@@ -1320,6 +1325,47 @@ JS = r"""
   $('grange').addEventListener('click', function () { gmIdx = (gmIdx + 1) % GM_RANGES.length; store.set('range', String(gmIdx)); drawGm(); });
 
   /* bottom tabs: one list (or the voice scope) at a time */
+  /* LAST HEARD: consecutive transmissions from one station collapse into one row (newest time, count);
+     the count opens the full run. Closed by default. */
+  var openG = {};
+  function paintLast(d) {
+    var showD = !!origin() && !!d.aprs, L = d.last_heard, out = [], meta = [], i = 0, seen = {};
+    function row(r, sub) {
+      var x = [showD ? r.time.slice(0, 5) : r.time, {call: r.src}, Math.round(r.dur) + 's'];
+      if (showD) { x.push(distText(r.src, false)); }
+      return x;
+    }
+    while (i < L.length) {
+      var j = i;
+      while (j + 1 < L.length && L[j + 1].src === L[i].src) { j++; }
+      var n = j - i + 1, key = L[j].src + '@' + L[j].time;
+      if (n === 1) { out.push(row(L[i])); meta.push({}); }
+      else {
+        seen[key] = 1;
+        var open = !!openG[key], tot = 0, k;
+        for (k = i; k <= j; k++) { tot += L[k].dur; }
+        var h = [showD ? L[i].time.slice(0, 5) : L[i].time, {call: L[i].src}, {tg: key, t: (open ? '\u25BE ' : '\u25B8 ') + n + '\u00D7'}];
+        if (showD) { h.push(distText(L[i].src, false)); }
+        out.push(h); meta.push({});
+        if (open) {
+          for (k = i; k <= j; k++) {
+            var c = row(L[k]); c[1] = ''; out.push(c); meta.push({sub: 1});
+          }
+        }
+      }
+      i = j + 1;
+    }
+    for (var kk in openG) { if (!seen[kk]) { delete openG[kk]; } }
+    rows('heard', out, showD ? ['b', 'a', 'c', 'd'] : ['b', 'a', 'c'], meta);
+  }
+  $('heard').addEventListener('click', function (e) {
+    var t = e.target;
+    if (t && t.getAttribute && t.getAttribute('data-g')) {
+      var k = t.getAttribute('data-g');
+      if (openG[k]) { delete openG[k]; } else { openG[k] = 1; }
+      if (last) { paintLast(last); arrows('heard', 'hdar'); }
+    }
+  });
   var TABS = ['linked', 'heard', 'sys', 'scope'], curTab = 'linked';
   function scopeOk() { return !!(last && last.lvl); }
   function paintTabs() {
@@ -1705,11 +1751,7 @@ JS = r"""
       return showD ? [{call: r.call}, distText(r.call, false), fmt(r.connected_for)]
                    : [{call: r.call}, fmt(r.connected_for)];
     }), showD ? ['a', 'd', 'b'] : ['a', 'b']);
-    rows('heard', d.last_heard.map(function (r) {
-      var row = [showD ? r.time.slice(0, 5) : r.time, {call: r.src}, Math.round(r.dur) + 's'];
-      if (showD) { row.push(distText(r.src, false)); }
-      return row;
-    }), ['b', 'a', 'c', 'd']);
+    paintLast(d);
     arrows('linked', 'lkar');
     if (heardMode === 0) { arrows('heard', 'hdar'); }
 
@@ -1995,6 +2037,7 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 if not isinstance(pin, str) or not re.match(r"^[0-9]{4,12}$", pin):
                     return self._json(403, {"error": "bad"})
                 tok, csrf, err = auth.login(self.client_address[0], pin)
+                audit(self, "login " + (err or "ok"))
                 if err == "locked":
                     return self._json(429, {"error": "locked"})
                 if err:
@@ -2003,8 +2046,10 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                                   self._cookie(tok, auth.SESSION_MAX))
             token = self._token()
             if auth.check(token, self.headers.get("X-CSRF", "")) is None:
+                audit(self, "refused %s (no valid login)" % path)
                 return self._json(401, {"error": "login required"})
             if path == "/api/logout":
+                audit(self, "logout")
                 auth.logout(token)
                 return self._json(200, {"ok": True}, self._cookie("", 0))
             if path == "/api/settings":
@@ -2016,6 +2061,7 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 except OSError:
                     return self._json(500, {"error": "cannot write"})
                 args.tot = tot
+                audit(self, "time limit set to %d" % tot)
                 return self._json(200, {"ok": True, "tot": tot})
             if path == "/api/delete":
                 store = {"msg": getattr(args, "msgwriter", None),
@@ -2030,6 +2076,7 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                     found = store.delete(mid)
                 except OSError:
                     return self._json(500, {"error": "cannot write"})
+                audit(self, "delete %s %d found=%s" % (obj.get("kind"), mid, found))
                 return self._json(200 if found else 404, {"ok": found})
             if path == "/api/picallow":
                 al = getattr(args, "picallow", None)
@@ -2048,12 +2095,14 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                     ok = al.add(call, rid) if op == "add" else al.remove(call, rid)
                 except OSError:
                     return self._json(500, {"error": "cannot write"})
+                audit(self, "picture sender %s %s id=%s ok=%s" % (op, call, rid or "-", ok))
                 return self._json(200 if ok else 404, {"ok": ok, "allow": al.list()})
             if menu.bridge is None:
                 return self._json(404, {"error": "bridge not configured"})
             action = obj.get("action")
             if action not in ("start", "stop"):
                 return self._json(400, {"error": "bad action"})
+            audit(self, "bridge %s" % action)
             with menu.lock:
                 now = time.time()
                 if now - menu.last_req < 3:
@@ -2167,6 +2216,18 @@ def save_settings(path, d):
     with os.fdopen(fd, "w") as f:
         json.dump(d, f)
     os.replace(tmp, path)
+
+
+def audit(handler, what):
+    """One line per admin action in the journal (stderr): who from, what. The forwarded-for header is
+    logged as sent and is not trusted for anything."""
+    try:
+        xff = (handler.headers.get("X-Forwarded-For") or "")[:60]
+        sys.stderr.write("ysfradio: AUDIT %s from %s%s\n" % (
+            what, handler.client_address[0], (" xff=" + xff.replace("\n", " ")) if xff else ""))
+        sys.stderr.flush()
+    except (OSError, ValueError):
+        pass
 
 
 def make_pin_cli(state_dir):
