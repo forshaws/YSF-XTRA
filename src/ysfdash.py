@@ -95,7 +95,7 @@ class State(object):
                     except ValueError:
                         since = None
                     self.pending.append({
-                        "call": clean(lm.group(1)), "ip": lm.group(2),
+                        "call": clean(lm.group(1)), "ip": lm.group(2), "port": lm.group(3),
                         "since": since,
                         "keepalive": "%s/%s" % (lm.group(4), lm.group(5)),
                     })
@@ -117,7 +117,7 @@ class State(object):
             if rest.startswith(EOT):
                 self._finish(ts)
 
-    def snapshot(self, show_ip, name):
+    def snapshot(self, show_ip, name, keys=False):
         with self.lock:
             ref = self.ref
             now_talking = None
@@ -139,6 +139,8 @@ class State(object):
                        "connected_for": cf}
                 if show_ip:
                     row["ip"] = r["ip"]
+                if keys:
+                    row["_key"] = "%s:%s" % (r["ip"], r.get("port", ""))   # for the caller only: remove before sending
                 linked.append(row)
             recent = list(self.txs)[-LAST_HEARD_SHOWN:]
             recent.reverse()

@@ -78,6 +78,13 @@ def attach_filter(sock, port):
         raise OSError(ctypes.get_errno(), "SO_ATTACH_FILTER failed")
 
 
+def udp_source(frame):
+    """Ethernet frame -> "address:port" the UDP packet came from (as udp_payload has checked it)."""
+    ihl = (frame[14] & 0x0F) * 4
+    sport = struct.unpack("!H", frame[14 + ihl:16 + ihl])[0]
+    return "%d.%d.%d.%d:%d" % (frame[26], frame[27], frame[28], frame[29], sport)
+
+
 def udp_payload(frame, port):
     """Ethernet frame -> UDP payload (IPv4/UDP to `port`), else None."""
     if len(frame) < 42 or struct.unpack("!H", frame[12:14])[0] != 0x0800:
@@ -209,6 +216,49 @@ class LevelOut(object):
             self.sum, self.n, self.pk = 0.0, 0, None
 
 
+class ActOut(object):
+    """Remembers when each client of the reflector (address:port, as the reflector lists it) last sent
+    a stream, in one small file for the dashboard's LINKED list. Two hotspots with the same callsign
+    are told apart this way. Updated at most every 5 seconds per client; entries older than 45 days
+    are dropped."""
+    KEEP = 45 * 86400
+    MAX = 256
+
+    def __init__(self, path):
+        self.path = path
+        self.a = {}
+        self.wr = {}
+        self.failed = False
+        try:
+            with open(path, "r") as f:
+                d = json.load(f)
+            for k, v in d.get("a", {}).items():
+                if isinstance(k, str) and isinstance(v, (int, float)):
+                    self.a[k] = float(v)
+        except (OSError, ValueError, AttributeError):
+            pass
+
+    def seen(self, addr, now):
+        if now - self.wr.get(addr, 0.0) < 5.0:
+            return
+        self.wr[addr] = now
+        self.a[addr] = now
+        keep = sorted(((k, v) for k, v in self.a.items() if now - v < self.KEEP), key=lambda kv: kv[1], reverse=True)[:self.MAX]
+        self.a = dict(keep)
+        if len(self.wr) > 4 * self.MAX:
+            self.wr = dict((k, self.wr[k]) for k in self.a)
+        try:
+            tmp = self.path + ".tmp"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+            with os.fdopen(fd, "w") as f:
+                json.dump({"v": 1, "a": self.a}, f)
+            os.replace(tmp, self.path)
+        except OSError as e:
+            if not self.failed:
+                self.failed = True
+                sys.stderr.write("ysfmsgd: cannot write %s: %s\n" % (self.path, e))
+
+
 class MonitorOut(object):
     """Hands each V/D type 2 voice packet to the dashboard's MON listeners. Sends the 49 vocoder bits of
     its five voice frames (35 bytes) as one datagram on a local socket owned by ysfradio.py; nothing is
@@ -262,10 +312,12 @@ def field(b):
 class Decoder(object):
     """Turns YSFD packets into stored messages."""
 
-    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None, act=None, picreq=None, wel=None, lvl=None, mon=None):
+    def __init__(self, store, per_hour=10, pos=None, news=None, board=None, board_room="", board_per_hour=3, pics=None, act=None, picreq=None, wel=None, lvl=None, mon=None, acts=None):
         self.store = store
         self.lvl = lvl                      # LevelOut or None
         self.mon = mon                      # MonitorOut or None
+        self.acts = acts                    # ActOut or None
+        self.src = None                     # "address:port" of the packet being read
         self.pics = pics                    # ysfpic.PicRx or None
         self.act = act                      # Activity or None
         self.picreq = picreq                # NewsQueue for News Station picture downloads, or None
@@ -313,6 +365,8 @@ class Decoder(object):
         ctr, frame = p[34], p[35:155]
         if frame[:5] != y.SYNC:
             return None
+        if self.acts is not None and self.src:
+            self.acts.seen(self.src, now)
         if self.wel is not None:
             self.wel.traffic(gw, src, self.local, now)
         f = self.fich(frame[5:30])
@@ -572,6 +626,9 @@ def main():
     ap.add_argument("--pictures-days", type=int, default=7, help="drop pictures older than this")
     ap.add_argument("--activity-out", default="/var/lib/ysfradio/activity.json",
                     help="file telling the dashboard a picture or data transfer is in progress (empty = off)")
+    ap.add_argument("--acts-out", default="",
+                    help="file with the time each connected client last sent a stream (default: lastact.json "
+                         "next to --activity-out; 'off' = do not write it)")
     ap.add_argument("--level-out", default="",
                     help="write the loudness of the voice being received to this file for the dashboard's "
                          "level meter (e.g. /var/lib/ysfradio/level.json); off by default")
@@ -616,11 +673,17 @@ def main():
         mon_path = os.path.join(os.path.dirname(a.level_out), "monitor.sock") if a.level_out else ""
     elif mon_path == "off":
         mon_path = ""
+    acts_path = a.acts_out
+    if acts_path == "":
+        acts_path = os.path.join(os.path.dirname(a.activity_out), "lastact.json") if a.activity_out else ""
+    elif acts_path == "off":
+        acts_path = ""
     dec = Decoder(ysfmsgstore.MsgFile(a.out, max(1, a.keep_days)), a.per_hour, pos, news,
                   board, a.board_room_id, a.board_per_hour, pics,
                   Activity(a.activity_out) if a.activity_out else None, picreq, wel,
                   LevelOut(a.level_out) if a.level_out else None,
-                  MonitorOut(mon_path) if mon_path else None)
+                  MonitorOut(mon_path) if mon_path else None,
+                  ActOut(acts_path) if acts_path else None)
     signal.signal(signal.SIGTERM, lambda *x: sys.exit(0))
     sys.stderr.write("ysfmsgd: watching UDP %d, writing %s\n" % (a.port, a.out))
     sys.stderr.flush()
@@ -636,6 +699,7 @@ def main():
             if len(p) == 14 and p[:4] in (b"YSFP", b"YSFU"):
                 wel.poll(field(p[4:14]), p[3:4] == b"U", dec.local, time.time())
                 continue
+        dec.src = udp_source(frame)
         try:
             mid = dec.packet(p)
         except Exception as e:               # never die on a malformed frame

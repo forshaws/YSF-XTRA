@@ -309,6 +309,13 @@ border-right:1px solid #1d1d20;overflow:hidden;min-width:0;min-height:0}
 .panel h2{display:flex;justify-content:space-between;margin:0 0 calc(var(--u)*.8);
 font-size:calc(var(--u)*2.2);color:var(--red);letter-spacing:.12em;font-weight:700}
 .panel h2 .ar{color:var(--dim);letter-spacing:0}
+.panel h2 .lkt{display:flex;gap:calc(var(--u)*.8);align-items:center}
+.mini{font:inherit;font-size:calc(var(--u)*1.9);font-weight:700;letter-spacing:.06em;line-height:1;color:var(--white);background:#1a1c22;border:1px solid #3a3f4a;border-radius:calc(var(--u)*.5);padding:calc(var(--u)*.5) calc(var(--u)*1);cursor:pointer}
+.mini:hover,.mini:focus-visible{background:#2a2f38;outline:0}
+.sfx{color:var(--dim)}
+.mini.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.fq{display:flex;gap:calc(var(--u)*.8);margin:0 0 calc(var(--u)*.8);max-width:calc(var(--u)*70)}
+.fq .mfield{width:100%;margin:0;font-size:calc(var(--u)*2.6);padding:calc(var(--u)*.5) calc(var(--u)*.8);text-transform:uppercase}
 .rows{flex:1;min-height:0;overflow-y:auto;font-size:calc(var(--u)*2.7);line-height:1.5;
 scrollbar-width:none;-ms-overflow-style:none;user-select:none;-webkit-user-select:none;
 touch-action:pan-y;cursor:grab}
@@ -602,7 +609,10 @@ JS = r"""
         sp.className = classes[idx] || 'b';
         if (c !== null && typeof c === 'object' && c.tg) {
           sp.className += ' tg'; sp.setAttribute('data-g', c.tg); sp.textContent = c.t;
-        } else if (c !== null && typeof c === 'object') { sp.appendChild(callNode(c.call)); }
+        } else if (c !== null && typeof c === 'object') {
+          sp.appendChild(callNode(c.call));
+          if (c.sfx) { var sx = document.createElement('span'); sx.className = 'sfx'; sx.textContent = c.sfx; sp.appendChild(sx); }
+        }
         else { sp.textContent = c; }
         div.appendChild(sp);
       });
@@ -1174,6 +1184,7 @@ JS = r"""
   document.addEventListener('selectstart', function (e) { if (!e.target || e.target.tagName !== 'INPUT') { e.preventDefault(); } });
   document.addEventListener('keydown', function (e) {
     if (e.ctrlKey || e.metaKey || e.altKey) { return; }
+    if (e.target && (e.target.id === 'lkin' || e.target.id === 'hdin')) { return; }
     if (msgOpen) {
       if (e.key === 'Escape' || e.key === 'l' || e.key === 'L') { closeMsg(); }
       else if (e.key === 'ArrowUp') { moveMsg(-1); }
@@ -1382,6 +1393,78 @@ JS = r"""
       if (last) { paintLast(last); arrows('heard', 'hdar'); }
     }
   });
+  /* FIND box: filters a list by callsign as you type. One per list (LINKED, and ALL under HEARD).
+     Enter, or tapping away, hides the box and keeps the filter (the button then shows what is being
+     searched for); tapping the button again, or Esc, clears it. */
+  function finder(pre, onChange) {
+    var btn = $(pre + 'find'), box = $(pre + 'q'), inp = $(pre + 'in'), f = {q: ''}, wasOpen = false;
+    function isOpen() { return box.className.indexOf('hidden') < 0; }
+    function paint() {
+      var hid = btn.className.indexOf('hidden') >= 0;
+      btn.className = 'mini' + (hid ? ' hidden' : '') + (f.q || isOpen() ? ' on' : '');
+      var t = f.q ? f.q.slice(0, 8) + ' \u00D7' : 'FIND';
+      if (btn.textContent !== t) { btn.textContent = t; }
+    }
+    f.close = function () { inp.value = ''; f.q = ''; box.className = 'fq hidden'; paint(); };
+    f.done = function () { if (!f.q) { f.close(); } else { box.className = 'fq hidden'; paint(); } };
+    f.refresh = paint;
+    function down() { wasOpen = isOpen() || !!f.q; }
+    btn.addEventListener('mousedown', down);
+    btn.addEventListener('touchstart', down, {passive: true});
+    btn.addEventListener('click', function () {
+      this.blur();
+      if (wasOpen) { f.close(); onChange(); }
+      else { box.className = 'fq'; paint(); try { inp.focus(); } catch (e) { /* no focus */ } }
+      wasOpen = false;
+    });
+    inp.addEventListener('input', function () { f.q = inp.value.trim().toUpperCase(); paint(); onChange(); });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { f.close(); onChange(); inp.blur(); }
+      else if (e.key === 'Enter') { inp.blur(); }
+    });
+    inp.addEventListener('blur', function () { f.done(); });
+    return f;
+  }
+
+  /* LINKED list: sorted by last transmission (then newest connection) unless the sort button says otherwise */
+  var LSORTS = ['ACT', 'NEW', 'OLD', 'AZ'], LSN = {ACT: 'LAST TX', NEW: 'NEWEST', OLD: 'LONGEST', AZ: 'A-Z'};
+  var linkSort = store.get('lsort', 'NEW');
+  if (LSORTS.indexOf(linkSort) < 0) { linkSort = 'NEW'; }
+  var linkFind = finder('lk', function () { paintLinked(last); });
+  function paintLinked(d) {
+    if (!d) { return; }
+    var showD = !!origin() && !!d.aprs, q = linkFind.q, INF = 1e12;
+    function cf(r) { return r.connected_for === null || r.connected_for === undefined ? INF : r.connected_for; }
+    function ac(r) { return r.act === undefined ? INF : r.act; }
+    var list = d.linked.filter(function (r) { return !q || r.call.toUpperCase().indexOf(q) >= 0; });
+    list.sort(function (a, b) {
+      var x = 0;
+      if (linkSort === 'ACT') { x = ac(a) - ac(b); if (x === 0) { x = cf(a) - cf(b); } }
+      else if (linkSort === 'NEW') { x = cf(a) - cf(b); }
+      else if (linkSort === 'OLD') { x = cf(b) - cf(a); }
+      if (x === 0) { x = a.call < b.call ? -1 : (a.call > b.call ? 1 : 0); }
+      return x < 0 ? -1 : (x > 0 ? 1 : 0);
+    });
+    var t = LSN[linkSort];
+    if ($('lksort').textContent !== t) { $('lksort').textContent = t; }
+    $('lksort').title = 'Sort: ' + t;
+    if (q && !list.length) { rows('linked', [['NO MATCH']], ['a']); }
+    else {
+      rows('linked', list.map(function (r) {
+        var tm = fmt(linkSort === 'ACT' ? r.act : r.connected_for);
+        var cn = {call: r.call, sfx: r.dup ? ' #' + r.dup : ''};
+        return showD ? [cn, distText(r.call, false), tm] : [cn, tm];
+      }), showD ? ['a', 'd', 'b'] : ['a', 'b']);
+    }
+    arrows('linked', 'lkar');
+  }
+  $('lksort').addEventListener('click', function () {
+    this.blur();
+    linkSort = LSORTS[(LSORTS.indexOf(linkSort) + 1) % LSORTS.length];
+    store.set('lsort', linkSort);
+    paintLinked(last);
+  });
+
   /* MON: listen to the reflector. ysfmon.js (decoder and player) is fetched the first time it is used. */
   var monP = null, monOn = false, monTry = 0, monNote = '', monNoteT = 0, monRetry = 0;
   function monAvail() { return !!(last && last.mon && last.mon.max > 0); }
@@ -1454,8 +1537,13 @@ JS = r"""
   var heardMode = 0, HMODES = ['HEARD', 'ALL', 'ACTIVE'], histD = null, histTimer = 0;
   var MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
   function histOk() { return !!(last && last.hist); }
+  var allFind = null;
   function paintHeard() {
     var m = heardMode;
+    if (!allFind) { allFind = finder('hd', function () { histPaint(); }); }
+    if (m !== 1) { allFind.close(); }
+    $('hdfind').className = m === 1 ? 'mini' : 'mini hidden';
+    allFind.refresh();
     $('heard').className = 'rows' + (m === 0 ? '' : ' hidden');
     $('hall').className = 'rows' + (m === 1 ? '' : ' hidden');
     $('hactw').className = 'scw' + (m === 2 ? '' : ' hidden');
@@ -1483,11 +1571,15 @@ JS = r"""
   function histPaint() {
     var m = heardMode;
     if (m === 0 || !histD) { return; }
-    $('hdt').textContent = m === 1 ? 'ALL  ' + histD.total : (histD.days ? 'ACTIVE  AVG TX PER HOUR' : 'ACTIVE');
+    var aq = allFind ? allFind.q : '';
     if (m === 1) {
-      rows('hall', histD.all.map(function (r) { return [{call: r[0]}, r[3] + (r[4] === 'L' ? ' LINK' : ' TX'), histWhen(r[1])]; }), ['a', 'c', 'b']);
+      var al = histD.all.filter(function (r) { return !aq || r[0].indexOf(aq) >= 0; });
+      $('hdt').textContent = aq ? 'ALL  ' + al.length + '/' + histD.total : 'ALL  ' + histD.total;
+      rows('hall', al.length || !aq ? al.map(function (r) { return [{call: r[0]}, r[3] + (r[4] === 'L' ? ' LINK' : ' TX'), histWhen(r[1])]; }) : [['NO MATCH']],
+           al.length || !aq ? ['a', 'c', 'b'] : ['a']);
       arrows('hall', 'hdar');
     } else {
+      $('hdt').textContent = histD.days ? 'ACTIVE  AVG TX PER HOUR' : 'ACTIVE';
       $('hdar').textContent = histD.days ? histD.days + ' DAY' + (histD.days === 1 ? '' : 'S') : '';
       histChart();
     }
@@ -1809,11 +1901,7 @@ JS = r"""
     $('link').textContent = d.stale ? 'NO LOG' : 'LIVE';
     $('nlinked').textContent = d.linked.length + ' LINKED';
 
-    var showD = !!origin() && !!d.aprs;
-    rows('linked', d.linked.map(function (r) {
-      return showD ? [{call: r.call}, distText(r.call, false), fmt(r.connected_for)]
-                   : [{call: r.call}, fmt(r.connected_for)];
-    }), showD ? ['a', 'd', 'b'] : ['a', 'b']);
+    paintLinked(d);
     paintLast(d);
     arrows('linked', 'lkar');
     if (heardMode === 0) { arrows('heard', 'hdar'); }
@@ -1883,8 +1971,8 @@ INDEX = """<!doctype html>
 <div class="route"><b id="rlab">LAST</b><span id="dest"></span><span id="rdist" class="rdist"></span></div>
 <div class="refl"><span id="rname"></span><span id="mode" class="n">DIGITAL VOICE</span></div>
 <div class="panels">
-<div id="p-linked" class="panel"><h2><span>LINKED</span><span id="lkar" class="ar"></span></h2><div id="linked" class="rows"></div></div>
-<div id="p-heard" class="panel off"><h2><span id="hdt">HEARD</span><span id="hdar" class="ar"></span></h2><div id="heard" class="rows"></div><div id="hall" class="rows hidden"></div><div id="hactw" class="scw hidden"><canvas id="hact"></canvas></div></div>
+<div id="p-linked" class="panel"><h2><span>LINKED</span><span class="lkt"><button id="lksort" class="mini" type="button">LAST TX</button><button id="lkfind" class="mini" type="button">FIND</button></span><span id="lkar" class="ar"></span></h2><div id="lkq" class="fq hidden"><input id="lkin" class="mfield" type="text" maxlength="12" placeholder="CALLSIGN" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Find a callsign"></div><div id="linked" class="rows"></div></div>
+<div id="p-heard" class="panel off"><h2><span id="hdt">HEARD</span><span class="lkt"><button id="hdfind" class="mini hidden" type="button">FIND</button></span><span id="hdar" class="ar"></span></h2><div id="hdq" class="fq hidden"><input id="hdin" class="mfield" type="text" maxlength="12" placeholder="CALLSIGN" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Find a callsign"></div><div id="heard" class="rows"></div><div id="hall" class="rows hidden"></div><div id="hactw" class="scw hidden"><canvas id="hact"></canvas></div></div>
 <div id="p-scope" class="panel scp off"><h2><span>SCOPE</span><span class="ar">VOICE kHz</span></h2><div class="scw"><canvas id="scope"></canvas></div></div>
 <div id="p-sys" class="panel sysp off"><h2><span>SYSTEM</span></h2>
 <div class="g"><span class="k">CPU</span><div class="bar"><i id="cpub"></i></div><span id="cpuv" class="v">--</span></div>
@@ -1965,7 +2053,8 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
             elif path == "/api/monitor" and getattr(args, "mon", None) is not None and not head_only:
                 self._monitor()
             elif path == "/api/status":
-                d = state.snapshot(False, args.name)
+                d = state.snapshot(False, args.name, True)
+                keys = [r.pop("_key", "") for r in d["linked"]]
                 d["system"] = stats.snapshot()
                 d["node"] = args.node
                 d["fade"] = args.fade
@@ -1977,6 +2066,7 @@ def make_handler(state, stats, args, loc, tls=None, menu=None):
                 d["pics"] = self._msg_status("picreader")
                 d["act"] = _activity(args.activity_file)
                 d["hist"] = getattr(args, "hist", None) is not None
+                link_activity(d["linked"], keys, getattr(args, "hist", None), d.get("as_at"))
                 d["mon"] = ({"n": args.mon.count(), "max": args.mon_max}
                             if getattr(args, "mon", None) is not None else None)
                 d["lvl"] = {"floor": args.level_floor, "full": args.level_full} if args.levels else None
@@ -2307,6 +2397,67 @@ def _level(path):
     return None
 
 
+def link_activity(linked, keys, hist, as_at):
+    """Adds to each linked row the seconds since it last sent a stream ('act') and, when several rows share a
+    callsign (two hotspots), a number ('dup') to tell them apart. The time comes from the address and port the
+    stream was sent from (written by ysfmsgd.py), so two hotspots with one callsign are not mixed up; a callsign
+    that is linked only once also falls back to the history file."""
+    acts = ACTS.get()
+    now = time.time()
+    count = {}
+    for r in linked:
+        count[r["call"]] = count.get(r["call"], 0) + 1
+    order = {}
+    for i, r in sorted(enumerate(linked), key=lambda x: (x[1].get("since") or "", keys[x[0]])):
+        if count[r["call"]] > 1:
+            order[r["call"]] = order.get(r["call"], 0) + 1
+            r["dup"] = order[r["call"]]
+    ref = None
+    if hist is not None and as_at:
+        try:
+            ref = datetime.strptime(as_at, ysfdash.TS_FMT)
+        except ValueError:
+            ref = None
+    for i, r in enumerate(linked):
+        t = acts.get(keys[i])
+        if t is not None:
+            r["act"] = max(0, int(now - t))
+        elif ref is not None and count[r["call"]] == 1:
+            a = hist.last_act(r["call"])
+            if a:
+                try:
+                    r["act"] = max(0, int((ref - datetime.strptime(a, ysfdash.TS_FMT)).total_seconds()))
+                except ValueError:
+                    pass
+
+
+class ActsFile(object):
+    """<state-dir>/lastact.json, reloaded when it changes: {"a": {"address:port": time of last stream}}."""
+
+    def __init__(self):
+        self.path = ""
+        self.mtime = None
+        self.data = {}
+
+    def get(self):
+        try:
+            m = os.stat(self.path).st_mtime
+            if m != self.mtime:
+                with open(self.path, "r") as f:
+                    d = json.loads(f.read(200000))
+                a = d.get("a", {}) if isinstance(d, dict) else {}
+                self.data = dict((k, float(v)) for k, v in a.items()
+                                 if isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool))
+                self.mtime = m
+        except (OSError, ValueError, AttributeError):
+            self.data = {}
+            self.mtime = None
+        return self.data
+
+
+ACTS = ActsFile()
+
+
 def load_settings(path):
     """Settings the admin changed from the menu ({"tot": seconds, "mon": listeners}); {} when none are saved."""
     out = {}
@@ -2507,6 +2658,7 @@ def main():
             t.daemon = True
             t.start()
     menu = Menu(auth, bridge, aprs)
+    ACTS.path = os.path.join(args.state_dir, "lastact.json")
     args.mon, args.mon_js = None, None
     args.mon_max = max(0, min(ysfmon.MAX_LISTENERS, args.monitors))
     args.mon_max = load_settings(args.settings_file).get("mon", args.mon_max)
