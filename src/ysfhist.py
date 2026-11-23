@@ -45,6 +45,8 @@ class History(object):
         self.prefix = prefix
         self.lock = threading.Lock()
         self.calls = {}                  # call -> [first, last, tx count, "T" or "L"]
+        self.act = {}                    # call or gateway -> time it last transmitted
+        self.act_new = False             # the file had no 'act' yet: scan the old logs once for it
         self.days = {}                   # "YYYY-MM-DD" -> [[24 tx counts], [24 seconds on air]]
         self.hw = ""                     # time of the last log line taken in
         self.at_hw = set()               # transmissions already counted that ended in that second
@@ -69,10 +71,16 @@ class History(object):
                     raise ValueError("day")
             self.calls, self.days, self.hw = calls, days, str(a.get("hw", ""))
             self.at_hw = set(str(x) for x in a.get("at", []))
+            act = a.get("act")
+            if isinstance(act, dict):
+                self.act = dict((str(k), str(v)) for k, v in act.items() if CALL_OK.match(str(k)))
+            else:
+                self.act_new = True
             self.loaded = True
         except (OSError, ValueError, KeyError, TypeError):
             self.calls, self.days, self.hw, self.loaded = {}, {}, "", False
             self.at_hw = set()
+            self.act = {}
 
     def save(self):
         with self.lock:
@@ -83,7 +91,11 @@ class History(object):
                 self.calls = dict(keep)
             for d in sorted(self.days)[:-KEEP_DAYS]:
                 del self.days[d]
-            data = json.dumps({"v": 1, "hw": self.hw, "at": sorted(self.at_hw), "calls": self.calls, "days": self.days})
+            if len(self.act) > MAX_CALLS:
+                keep = sorted(self.act.items(), key=lambda kv: kv[1], reverse=True)[:MAX_CALLS]
+                self.act = dict(keep)
+            data = json.dumps({"v": 1, "hw": self.hw, "at": sorted(self.at_hw), "calls": self.calls,
+                               "days": self.days, "act": self.act})
             self.dirty = False
         try:
             tmp = self.path + ".tmp"
@@ -115,6 +127,18 @@ class History(object):
                 r[3] = "T"
             r[2] += n
             self.dirty = True
+
+    def _act(self, ts, *calls):
+        with self.lock:
+            for c in calls:
+                c = c.upper()
+                if CALL_OK.match(c) and ts > self.act.get(c, ""):
+                    self.act[c] = ts
+                    self.dirty = True
+
+    def last_act(self, call):
+        with self.lock:
+            return self.act.get(call.upper())
 
     def _tx(self, start, src, dur):
         self._seen(start, src, "T", 1)
@@ -168,7 +192,9 @@ class History(object):
         rm = ysfdash.RX_RE.match(rest)
         if rm:
             self._finish(st, ts, skip)
-            st["cur"] = (ts, ysfdash.clean(rm.group(1)).strip())
+            src, gw = ysfdash.clean(rm.group(1)).strip(), ysfdash.clean(rm.group(3)).strip()
+            st["cur"] = (ts, src)
+            self._act(ts, src, gw)
             return
         if rest.startswith(ysfdash.EOT) or rest.startswith(WATCHDOG):
             self._finish(st, ts, skip)
@@ -194,10 +220,27 @@ class History(object):
         except (OSError, IOError):
             pass
 
+    def _scan_act(self, path):
+        try:
+            with open(path, "r", errors="replace") as f:
+                for line in f:
+                    m = ysfdash.LINE_RE.match(line.rstrip("\r\n"))
+                    if not m:
+                        continue
+                    rm = ysfdash.RX_RE.match(m.group(2))
+                    if rm:
+                        self._act(m.group(1), ysfdash.clean(rm.group(1)).strip(), ysfdash.clean(rm.group(3)).strip())
+        except (OSError, IOError):
+            pass
+
     def run(self, stop):
         """Read the old logs, then follow the newest one. Meant for a daemon thread."""
         self.load()
         files = self._files()
+        if self.loaded and self.act_new:               # history from before 'act' existed: fill it from the logs once
+            for p in files:
+                self._scan_act(p)
+            self.act_new = False
         newest = files[-1] if files else None
         first_day = self.hw[:10]
         for p in files[:-1]:
